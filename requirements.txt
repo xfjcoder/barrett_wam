@@ -6,3 +6,8 @@
 numpy
 mujoco>=3.1.0
 Pillow
+
+# rl/ additionally needs (already present in the same venv):
+stable_baselines3
+gymnasium
+torch

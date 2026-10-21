@@ -333,6 +333,91 @@ same robust path): 20/20 and 10/10. The IK-convergence gap wasn't one bug -- it 
 solver limitation (fixed) and a measurement artifact (also fixed), surfaced together only
 because the same couple of seeds happened to sit at the boundary of both.
 
+## RL experiment: can a learned policy beat the scripted close ramp?
+
+After Stage 4's grasp-reliability investigation concluded that fixing the "nudged out of
+reach during close" failure mode for real would need closed-loop per-finger contact-seeking --
+each finger reacting to the object's *current* position instead of following an open-loop
+angle schedule -- the natural next question was whether RL could learn that reactive behavior
+directly. `rl/` holds the result: a working PPO training pipeline (`stable_baselines3`,
+matching [`go1_rl_walk`](../go1_rl_walk)'s own conventions -- PPO for its native continuous
+actions and on-policy robustness to reward-function churn, `SubprocVecEnv` + `VecNormalize` +
+`VecMonitor`, per-run `args.json` for reproducibility) that, after three iterations of
+debugging real RL failure modes, reaches **2/20** on the same held-out eval as the scripted
+baseline's 11/20 -- confirmed, non-zero, but well below the hand-engineered approach in the
+time budget this took.
+
+**Scope**: rather than learning the whole pick (a much larger, longer-horizon problem), the
+policy controls only the close phase identified above -- pregrasp/descend/lift stay exactly
+the scripted, already-reliable Stage 4 code (`rl/build_states.py` precomputes 120 post-descend
+states once, since re-running the 4+1.5-second scripted approach from scratch on every RL
+episode reset would make that non-learned overhead 3-4x the cost of the ~2-second phase
+actually being learned). The policy's 3D action is a per-finger closing *rate*; its 25D
+observation includes each finger's joint angles/velocities, per-finger contact force against
+the object (`FingerContactSensor`, the same per-finger force-sensing built for Stage 4's own
+reliability investigation), and the object's position/velocity relative to the grasp site.
+Reward is dense shaping (contact-force progress, a drift penalty, an action-smoothness
+penalty) plus a terminal bonus from running the exact same scripted lift-and-check Stage 4
+uses, so "success" here is directly comparable to Stage 4's own 11/20 number.
+
+**Three failure modes hit and fixed, in order** (all three are common, well-documented RL
+pitfalls -- worth recording precisely which shape of reward produced which failure, since the
+symptoms look superficially similar but the fixes are not):
+1. **Sparse reward, zero exploration signal.** First attempt rewarded per-finger contact only
+   above a force *threshold* (a step function). Result: 0/20, and *every single* held-out
+   episode landed on the exact same ~-5.02 terminal reward -- meaning the terminal success
+   bonus was never observed even once across ~5000 training episodes. A threshold gives zero
+   gradient below it, so nothing pushed a near-random initial policy toward the specific,
+   multi-step-coordinated behavior needed to cross it even once. Fixed by rewarding raw
+   per-finger contact force continuously instead of its threshold-crossing.
+2. **A failed attempt penalized worse than doing nothing.** Still 0/20 after the fix above,
+   but the training curve explained why: reward spiked positive (real successes) partway
+   through training, then collapsed back to the same floor as before. With the original drift
+   penalty weight, attempting to close and failing (drift penalty stacked on top of the
+   guaranteed terminal failure penalty) scored worse than never moving at all (zero drift,
+   same guaranteed failure penalty) -- so once exploration noise pushed the policy toward
+   caution, there was no gradient pulling it back out, even though *some* attempts were
+   succeeding. Fixed by lowering the drift penalty so a failed attempt isn't penalized harder
+   than inaction.
+3. **Reward hacking: the dense term dwarfed the real objective.** With the drift fix in place,
+   training reward finally climbed to genuinely large positive values (40-130) -- but held-out
+   eval was still 0/20, and per-episode cumulative reward was often 15-60 despite the episode's
+   *final* (terminal) reward always being negative. The dense per-finger force term, summed
+   over 3 fingers and ~100 steps, could total several hundred points -- vastly outweighing the
+   +20 terminal success bonus -- so the optimal policy under that reward was "squeeze as hard
+   as possible," which farms the proxy reward every step regardless of whether that squeeze
+   produces a grip that actually survives the lift check. Fixed by rescaling the dense term
+   down 50x, small enough to only ever contribute a gradient hint, not compete with the real
+   objective.
+
+Rescaling the dense term down that far *from scratch*, though, starved exploration back to
+zero successes again (same failure mode as #1, at a different weight) -- confirming the
+tension directly: enough dense reward to discover success-adjacent behavior at all tends to be
+enough to get exploited instead of the real goal. The fix that actually worked was two-stage,
+not a single weight: train once with the strong (exploitable) dense reward until it reliably
+discovers *some* successful contact behavior, then resume training that same policy with the
+weight rescaled down, letting it correct the "squeeze too hard" behavior into one that actually
+survives the lift check without re-learning contact-seeking from zero. That two-stage run is
+what reached 2/20:
+
+```
+python3 rl/train.py --run-name stage1 --timesteps 1000000 --n-envs 12 --gamma 0.99 \
+    --contact-force-weight 1.0
+python3 rl/train.py --run-name stage2 --timesteps 1000000 --n-envs 12 --gamma 0.99 --lr 1e-4 \
+    --contact-force-weight 0.02 \
+    --resume rl/runs/stage1/checkpoints/final.zip \
+    --resume-vecnormalize rl/runs/stage1/checkpoints/vecnormalize_final.pkl
+python3 rl/eval_policy.py --run-name stage2
+```
+
+**Net assessment**: real, repeatable, better than a from-scratch collapse -- but a clear loss
+to the scripted baseline (2/20 vs 11/20) at this training budget (a few million CPU-only
+timesteps total across all iterations, no GPU). Closing that gap further would plausibly need
+more training time, a reward shaped more carefully around the specific lift-survival criterion
+rather than raw contact force, or an algorithm better suited to sparse manipulation rewards
+(e.g. hindsight experience replay) -- a bigger investment than fit here. Flagged as a genuine,
+partially-negative result rather than left unreported.
+
 ## Repository layout
 
 ```
@@ -364,6 +449,13 @@ barrett_wam/
 │   ├── stage3_moving_target.gif
 │   ├── stage4_grasp.gif
 │   └── stage5_pick_and_place.gif
+├── rl/                               # RL experiment, see writeup above (2/20 vs the 11/20 baseline)
+│   ├── build_states.py               # precomputes post-descend states -> states.npz
+│   ├── states.npz
+│   ├── grasp_env.py                  # Gymnasium env for the close-phase sub-problem
+│   ├── train.py                      # PPO training (stable_baselines3), --resume for staged runs
+│   ├── eval_policy.py                # 20-trial held-out eval, comparable to eval_stage4_grasp.py
+│   └── runs/                         # training checkpoints/logs (gitignored, not committed)
 ├── requirements.txt
 └── README.md
 ```
