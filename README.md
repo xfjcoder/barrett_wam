@@ -287,25 +287,8 @@ starting this project. They share no code.
    *Stage 5's demo: the arm picking the sphere up, carrying it across the table
    (`demo_stage5_pick_and_place.py`), and releasing it at the place target.*
 
-   **Revisited with residual RL (see RL section below): picked 17/20, placed 14/20.**
-   `eval_stage5_pick_and_place_rl.py` swaps only the close phase for the trained
-   `close08_residual` policy -- everything else (pregrasp/descend/lift/transport/lower/
-   release/retract) is unchanged. Getting this right needed one more fix beyond the close
-   phase itself: the lift/transport/lower code originally called
-   `hand.set_targets(..., GRIP_CLOSE)`, a *uniform* close value, which silently overwrote the
-   policy's asymmetric per-finger grip (e.g. one finger deliberately held back to cage the
-   object) the instant the lift began -- discarding exactly the thing residual RL contributes.
-   Holding the policy's exact per-finger closes through lift/transport/lower instead (only
-   releasing them, per finger, at the very end) took picked from 15/20 to the full 17/20
-   matching the isolated close-phase eval, confirming it was the actual bug rather than
-   something unfixable. Placed: 14/20, up from the scripted baseline's 9/20.
-
-   <p align="center">
-     <img src="media/stage5_pick_and_place_rl.gif" width="480" alt="WAM arm picking a sphere off the table using the residual-RL close policy, carrying it to a second spot, and releasing it there">
-   </p>
-
-   *Same pick-and-place task, residual-RL close phase (`demo_stage5_pick_and_place_rl.py`,
-   seed 1, a placed success).*
+   **Revisited later with residual RL, after that work is described below: picked 17/20,
+   placed 14/20, up from 11/20 / 9/20 -- see the end of the "RL experiment" section.**
 
 ### Addendum: digging into the IK-convergence gap
 
@@ -560,6 +543,26 @@ from-scratch attempts). Confirmed to carry over into the full pick-and-place tas
 unrelated integration bug (the lift phase silently overwriting the learned grip with a uniform
 close) was found and fixed the same way as everything else here: by checking a surprising
 number against a reasoned expectation rather than accepting it.
+
+**Extended into the full pick-and-place task (Stage 5 revisited): picked 17/20, placed 14/20.**
+`eval_stage5_pick_and_place_rl.py` swaps only the close phase for the trained
+`close08_residual` policy -- everything else (pregrasp/descend/lift/transport/lower/
+release/retract) is unchanged. Getting this right needed one more fix beyond the close
+phase itself: the lift/transport/lower code originally called
+`hand.set_targets(..., GRIP_CLOSE)`, a *uniform* close value, which silently overwrote the
+policy's asymmetric per-finger grip (e.g. one finger deliberately held back to cage the
+object) the instant the lift began -- discarding exactly the thing residual RL contributes.
+Holding the policy's exact per-finger closes through lift/transport/lower instead (only
+releasing them, per finger, at the very end) took picked from 15/20 to the full 17/20
+matching the isolated close-phase eval, confirming it was the actual bug rather than
+something unfixable. Placed: 14/20, up from the scripted baseline's 9/20.
+
+<p align="center">
+  <img src="media/stage5_pick_and_place_rl.gif" width="480" alt="WAM arm picking a sphere off the table using the residual-RL close policy, carrying it to a second spot, and releasing it there">
+</p>
+
+*Same pick-and-place task, residual-RL close phase (`demo_stage5_pick_and_place_rl.py`,
+seed 1, a placed success).*
 
 ## Repository layout
 
