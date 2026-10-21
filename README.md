@@ -258,6 +258,35 @@ starting this project. They share no code.
    at the object's *current* position as it closes, not an open-loop angle schedule), a
    meaningfully bigger control problem than this stage's scope. Flagged, not chased further.
 
+5. **Pick-and-place -- DONE.** Extends Stage 4's pick sequence (pregrasp/descend/close/lift,
+   unchanged) with four more phases: transport the still-gripped object sideways to a second
+   table location, lower to it, release (ramp the fingers back open instead of closed), and
+   retract clear. `eval_stage5_pick_and_place.py` and `demo_stage5_pick_and_place.py` both
+   import Stage 4's constants and helpers (`best_oriented_ik`, `GRIP_CLOSE`, the phase
+   durations) rather than redefining them -- the first four phases are byte-identical logic,
+   only the new release/retract pieces are new.
+
+   The place target is a fixed offset (`PLACE_OFFSET = (0.1, 0.15)`) from wherever the pick
+   location landed, kept well inside the table's actual footprint for every sampled pick
+   location (the table is much bigger than Stage 4's randomized pick region). No new physics
+   problems turned up here -- release is just the close ramp run in reverse, and the same
+   `condim=6` rolling-friction fix from Stage 4 keeps a released sphere from coasting away from
+   the drop point.
+
+   **Evaluated over 20 random pick locations** (`eval_stage5_pick_and_place.py`): **picked
+   11/20** (matches Stage 4's own rate exactly, as expected -- same pick logic, same seeds) and
+   **placed 9/20** -- 9 of the 11 successful picks also landed within 5cm of the place target;
+   the other 2 missed by only 1-3mm past that threshold. Placement failure, in other words, is
+   almost entirely downstream of Stage 4's pick-reliability ceiling (see its addendum above),
+   not a new failure mode introduced by carrying or releasing the object.
+
+   <p align="center">
+     <img src="media/stage5_pick_and_place.gif" width="480" alt="WAM arm picking a sphere off the table, carrying it to a second spot, and releasing it there">
+   </p>
+
+   *Stage 5's demo: the arm picking the sphere up, carrying it across the table
+   (`demo_stage5_pick_and_place.py`), and releasing it at the place target.*
+
 ### Addendum: digging into the IK-convergence gap
 
 Stage 2 originally missed 3/20 targets and Stage 3 missed 3/10 circles, and two of Stage 3's
@@ -323,15 +352,18 @@ barrett_wam/
 ├── eval_stage2_reach_target.py      # Stage 2: 20-trial random-target eval
 ├── eval_stage3_moving_target.py     # Stage 3: 10-trial moving-target tracking eval
 ├── eval_stage4_grasp.py             # Stage 4: 20-trial random-table-position grasp eval
+├── eval_stage5_pick_and_place.py    # Stage 5: 20-trial pick-and-place eval
 ├── demo_stage1_kinematic_sweep.py   # Stage 1: verification sweep, see media/ GIF above
 ├── demo_stage2_reach_target.py      # Stage 2: 4-target reach demo, see media/ GIF above
 ├── demo_stage3_moving_target.py     # Stage 3: moving-target tracking demo, see media/ GIF
 ├── demo_stage4_grasp.py             # Stage 4: pick-up demo, see media/ GIF above
+├── demo_stage5_pick_and_place.py    # Stage 5: pick-and-place demo, see media/ GIF above
 ├── media/
 │   ├── stage1_kinematic_sweep.gif
 │   ├── stage2_reach_target.gif
 │   ├── stage3_moving_target.gif
-│   └── stage4_grasp.gif
+│   ├── stage4_grasp.gif
+│   └── stage5_pick_and_place.gif
 ├── requirements.txt
 └── README.md
 ```
