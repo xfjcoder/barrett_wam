@@ -12,6 +12,17 @@ Episode: reset -> sample a cached post-descend state (see build_states.py) -> FR
 EPISODE_STEPS physics steps of RL-controlled closing -> a scripted lift+check exactly like
 eval_stage4_grasp.py's, whose outcome becomes the terminal reward. The arm is NOT controlled
 by the policy at all; it's held at the cached pregrasp/descend joint target throughout.
+
+RESIDUAL ACTION (see README's RL section): a from-scratch policy controlling the raw per-
+finger close value has to *rediscover* a working squeeze through random exploration before it
+can improve on it -- confirmed expensive (three failure modes) and, once the episode-
+independence bug below was fixed, a from-scratch run scored 0/20, i.e. couldn't reliably
+rediscover it at all in the same budget. The scripted close ramp already gets 11/20 (Stage
+4), so the policy now outputs a bounded *correction* on top of that ramp (MAX_RESIDUAL_RATE /
+RESIDUAL_BOUND below) instead of the raw close value: action == 0 for the whole episode
+reproduces the scripted ramp exactly (see `_update_closes`), so exploration only has to find
+small, helpful deviations from an already-working baseline (e.g. "hold this finger back, it
+already made contact") instead of the whole multi-step behavior from zero.
 """
 import sys
 from pathlib import Path
@@ -23,7 +34,7 @@ from gymnasium import spaces
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from control import pd_gravity_comp_step
-from eval_stage4_grasp import URDF, LIFT_HEIGHT, LIFT_SECONDS
+from eval_stage4_grasp import URDF, GRIP_CLOSE, LIFT_HEIGHT, LIFT_SECONDS
 from hand_control import (DIST_MAX, DIST_TO_MED_RATIO, FINGER_1, FINGER_2, FINGER_3, FINGERS,
                            MED_MAX, HandController, SPREAD_PARALLEL)
 from ik import N_ARM, solve_ik_multistart
@@ -37,7 +48,12 @@ STATES_PATH = Path(__file__).parent / "states.npz"
 
 FRAME_SKIP = 10
 EPISODE_STEPS = 100  # 100 * FRAME_SKIP * dt(0.002) = 2.0s of RL-controlled closing
-MAX_CLOSE_RATE = 0.05  # max change in a finger's close value per env step (saturates in 20)
+# Residual action bounds: a finger's close value is baseline(t) + residual, residual
+# accumulated the same way the old raw close value was (a per-step rate, clipped to a bound)
+# so the policy still has fast authority to react to contact, just around a moving baseline
+# instead of around zero.
+MAX_RESIDUAL_RATE = 0.03  # max change in a finger's residual per env step
+RESIDUAL_BOUND = 0.3      # max a finger's close value may deviate from the scripted ramp
 
 # A first training run (500k timesteps) with a threshold-count contact bonus (+W_CONTACT per
 # finger above a force threshold) got 0/20 on held-out eval -- every single episode, the exact
@@ -133,7 +149,8 @@ class GraspCloseEnv(gym.Env):
         self.n_pool = len(self.pool["obj_xy"])
         self.state_indices = state_indices if state_indices is not None else np.arange(self.n_pool)
 
-        obs_dim = 8 + 8 + 3 + 3 + 3  # hand qpos, hand qvel, contact force, obj pos rel ee, obj linvel
+        # hand qpos, hand qvel, contact force, obj pos rel ee, obj linvel, episode progress
+        obs_dim = 8 + 8 + 3 + 3 + 3 + 1
         self.observation_space = spaces.Box(-np.inf, np.inf, shape=(obs_dim,), dtype=np.float32)
         self.action_space = spaces.Box(-1.0, 1.0, shape=(3,), dtype=np.float32)
 
@@ -172,7 +189,9 @@ class GraspCloseEnv(gym.Env):
         obj_pos = self.data.xpos[self.obj_body]
         obj_rel = obj_pos - self.data.site_xpos[self.site_id]
         obj_linvel = self.data.qvel[self.obj_dof:self.obj_dof + 3]
-        obs = np.concatenate([hand_qpos, hand_qvel, np.clip(force_vec, 0, 5.0), obj_rel, obj_linvel])
+        progress = np.array([self.t / EPISODE_STEPS])
+        obs = np.concatenate([hand_qpos, hand_qvel, np.clip(force_vec, 0, 5.0), obj_rel,
+                               obj_linvel, progress])
         return obs.astype(np.float32)
 
     def reset(self, *, seed=None, options=None):
@@ -193,12 +212,29 @@ class GraspCloseEnv(gym.Env):
         self.data.qvel[self._hand_dof] = 0.0
         self.q_arm = self.pool["arm_qpos"][idx].copy()
         self.obj_xy_start = self.pool["obj_xy"][idx].copy()
+        self.t = 0
+        self.residual = {"finger_1": 0.0, "finger_2": 0.0, "finger_3": 0.0}
         self.closes = {"finger_1": 0.0, "finger_2": 0.0, "finger_3": 0.0}
+        self._update_closes()
         self._set_finger_closes()
         mj.mj_forward(self.model, self.data)
 
-        self.t = 0
         return self._get_obs(), {}
+
+    def _baseline_close(self, t):
+        """The scripted close ramp (Stage 4's CLOSE_RAMP_SECONDS+CLOSE_HOLD_SECONDS, 11/20),
+        compressed to this env's EPISODE_STEPS window: 0 -> GRIP_CLOSE linearly, reaching
+        GRIP_CLOSE exactly as the episode ends (the subsequent scripted lift phase already
+        provides a further ~2s of hold-while-lifting, same as Stage 4's own hold phase)."""
+        frac = min(1.0, (t + 1) / EPISODE_STEPS)
+        return GRIP_CLOSE * frac
+
+    def _update_closes(self):
+        """closes = baseline(t) + residual -- zero residual for the whole episode reproduces
+        the scripted ramp exactly, by construction."""
+        baseline = self._baseline_close(self.t)
+        for finger in self.closes:
+            self.closes[finger] = float(np.clip(baseline + self.residual[finger], 0.0, 1.0))
 
     def _set_finger_closes(self):
         """hand_control.HandController only exposes the uniform set_targets -- apply per-
@@ -216,8 +252,10 @@ class GraspCloseEnv(gym.Env):
     def step(self, action):
         action = np.clip(action, -1.0, 1.0)
         for i, finger in enumerate(("finger_1", "finger_2", "finger_3")):
-            self.closes[finger] = float(np.clip(
-                self.closes[finger] + action[i] * MAX_CLOSE_RATE, 0.0, 1.0))
+            self.residual[finger] = float(np.clip(
+                self.residual[finger] + action[i] * MAX_RESIDUAL_RATE,
+                -RESIDUAL_BOUND, RESIDUAL_BOUND))
+        self._update_closes()
 
         for _ in range(FRAME_SKIP):
             self._set_finger_closes()

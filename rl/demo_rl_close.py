@@ -26,7 +26,7 @@ from eval_stage4_grasp import (STANDOFF, PREGRASP_SECONDS, DESCEND_SECONDS, LIFT
                                 LIFT_SECONDS, random_table_xy, best_oriented_ik)
 from hand_control import SPREAD_PARALLEL
 from ik import solve_ik_multistart, N_ARM
-from grasp_env import GraspCloseEnv, EPISODE_STEPS, FRAME_SKIP, MAX_CLOSE_RATE
+from grasp_env import GraspCloseEnv, EPISODE_STEPS, FRAME_SKIP, MAX_RESIDUAL_RATE, RESIDUAL_BOUND
 
 RUN_NAME = "close06_stage2"
 
@@ -122,7 +122,10 @@ def main():
     # controller's settling error, which is enough to flip a marginal grasp outcome.
     env.q_arm = data.qpos[:N_ARM].copy()
     env.obj_xy_start = obj_xy.copy()
+    env.t = 0
+    env.residual = {"finger_1": 0.0, "finger_2": 0.0, "finger_3": 0.0}
     env.closes = {"finger_1": 0.0, "finger_2": 0.0, "finger_3": 0.0}
+    env._update_closes()
     env._set_finger_closes()
     mj.mj_forward(model, data)
 
@@ -132,14 +135,17 @@ def main():
         action, _ = policy.predict(obs_norm, deterministic=True)
         action = np.clip(action[0], -1.0, 1.0)
         for j, finger in enumerate(("finger_1", "finger_2", "finger_3")):
-            env.closes[finger] = float(np.clip(
-                env.closes[finger] + action[j] * MAX_CLOSE_RATE, 0.0, 1.0))
+            env.residual[finger] = float(np.clip(
+                env.residual[finger] + action[j] * MAX_RESIDUAL_RATE,
+                -RESIDUAL_BOUND, RESIDUAL_BOUND))
+        env._update_closes()
         for _ in range(FRAME_SKIP):
             env._set_finger_closes()
             env._apply_arm_hold()
             step_count[0] += 1
             if step_count[0] % 25 == 0:
                 render()
+        env.t += 1
 
     # scripted lift + success check, identical to grasp_env.py's _scripted_lift_check
     obj_pos0_lift = data.xpos[env.obj_body].copy()

@@ -343,12 +343,11 @@ directly. `rl/` holds the result: a working PPO training pipeline (`stable_basel
 matching [`go1_rl_walk`](../go1_rl_walk)'s own conventions -- PPO for its native continuous
 actions and on-policy robustness to reward-function churn, `SubprocVecEnv` + `VecNormalize` +
 `VecMonitor`, per-run `args.json` for reproducibility) that, after three iterations of
-debugging real RL failure modes (below) plus a fourth, orthogonal environment bug (also
-below). Best measured result: **3/20** on the same held-out eval as the scripted baseline's
-11/20, for a policy trained before that fourth bug was fixed; a fully clean run (trained *and*
-evaluated after the fix) currently scores **0/20** -- the bug turned out to have been doing
-real work during training, not just inflating the eval count. See below for the full story;
-well below the hand-engineered approach either way, in the time budget this took.
+debugging real RL failure modes, an orthogonal environment bug, and a redesign from
+from-scratch to residual action (all below), reaches **17/20** on the same held-out eval as
+the scripted baseline's 11/20 -- a real win, not just "non-zero this time." See below for the
+full path to get there, including two reported intermediate results (3/20, then 0/20) that
+were each superseded by investigating further rather than left as the final answer.
 
 **Scope**: rather than learning the whole pick (a much larger, longer-horizon problem), the
 policy controls only the close phase identified above -- pregrasp/descend/lift stay exactly
@@ -425,14 +424,6 @@ symptoms look superficially similar but the fixes are not):
    plausible next things to try); left here as the honest, current state of the experiment
    rather than re-running until a better seed happens to land.
 
-`close06_stage2` (seeds 6 and 0, the policy's only two observed outcomes, trained before the
-bug fix below but evaluated after it -- see that section for why a fully clean run currently
-has no success case to film):
-
-| | seed 6 (success) | seed 0 (failure) |
-|---|---|---|
-| | ![rl close success](media/rl_close_success.gif) | ![rl close failure](media/rl_close_failure.gif) |
-
 Rescaling the dense term down that far *from scratch*, though, starved exploration back to
 zero successes again (same failure mode as #1, at a different weight) -- confirming the
 tension directly: enough dense reward to discover success-adjacent behavior at all tends to be
@@ -482,18 +473,56 @@ bug fix, evaluated *after* it: 4/20 as originally measured, 3/20 once eval stopp
 trials a head start. A fully clean from-scratch run, trained *and* evaluated post-fix, scored
 **0/20** -- see the bug writeup above for why: the leak had been doing some of training's work.)
 
-**Net assessment**: the honest current state is worse than it looked a few hours ago. The
-two-stage "squeeze hard, then correct" recipe is real -- it reliably explains *why* a from-zero
-dense-reward policy either starves or reward-hacks, and the fix for each failure mode is
-correct on its own terms -- but the headline 2/20 -> 4/20 numbers turned out to be measuring a
-policy that got uncredited help from a leaked warm start during training, not the problem as
-specified. Cleanly trained and cleanly evaluated, it's currently a clear loss to the scripted
-baseline (0/20 vs 11/20). Closing the gap would now need either an explicit curriculum (phase
-in cold starts gradually, rather than relying on an accident to provide one), more stage-2
-budget specifically for cold-start recovery, a reward shaped more carefully around the
-lift-survival criterion, or an algorithm better suited to sparse manipulation rewards (e.g.
-hindsight experience replay) -- not yet attempted. Flagged as a genuine, now more clearly
-negative result rather than left unreported.
+The honest conclusion at this point was that cleanly trained and cleanly evaluated, the
+approach was a clear loss to the scripted baseline (0/20 vs 11/20) -- the two-stage recipe
+could explain and fix each reward-design failure mode on its own terms, but had been
+quietly leaning on the leaked warm start to handle cold-start exploration, and removing the
+leak exposed that gap.
+
+**Residual action: stop asking the policy to rediscover the baseline, let it correct it.**
+The question underneath the 0/20 result (user: *"so rl start from cold, why not based on the
+11/20 success rate?"*) was exactly right: controlling the raw per-finger close value from a
+blank slate means every training run has to *rediscover* a working squeeze through random
+exploration before it can improve on it -- that rediscovery is precisely what the 0/20 run
+failed to do. The scripted close ramp already gets 11/20, so there was no reason to make the
+policy re-derive it. Redesigned the action: the policy now outputs a bounded per-finger
+*correction* on top of the scripted ramp (`MAX_RESIDUAL_RATE` / `RESIDUAL_BOUND` in
+`grasp_env.py`) instead of the raw close value, so `action == 0` for the whole episode
+reproduces the scripted ramp exactly, by construction -- verified directly before spending any
+training time on it: a pure zero-residual rollout over the 20 held-out states scores **12/20**,
+matching Stage 4's 11/20. Exploration now only has to find small, helpful deviations from an
+already-working baseline (e.g. "hold this finger back, it already made contact") instead of
+the whole multi-step behavior from zero, so the two-stage exploit/rescale dance is no longer
+needed either -- a single training stage at the non-exploitable `contact_force_weight=0.02`
+is enough:
+
+```
+python3 rl/train.py --run-name close08_residual --timesteps 3000000 --n-envs 14 --gamma 0.99 \
+    --contact-force-weight 0.02
+python3 rl/eval_policy.py --run-name close08_residual
+```
+
+Result: **17/20** -- a real win over the scripted baseline's 11/20, re-verified with fresh
+standalone rollouts (not just the in-sequence eval loop, after getting burned once already by
+trial-order leakage) for both the failures and a sample of the successes, all reproducing
+exactly. The three seeds it still fails on (9, 15, 16) are presumably the genuinely hard
+geometries within this object/gripper setup; not yet characterized further.
+
+| | seed 0 (success) | seed 9 (failure) |
+|---|---|---|
+| | ![rl close success](media/rl_close_success.gif) | ![rl close failure](media/rl_close_failure.gif) |
+
+**Net assessment**: the end-to-end arc here is itself the useful artifact. From-scratch RL on
+this sub-problem failed three different ways (sparse reward, a penalty-asymmetry trap, reward
+hacking), each with a distinct, diagnosable signature -- and even after fixing all three, a
+subtle environment bug (leaked hand state across episodes) was propping up the result more
+than it first appeared, which only came apart once that bug was found and fixed. What actually
+closed the gap wasn't more data, more compute, or a cleverer reward -- it was recognizing that
+unconstrained from-scratch control was the wrong problem framing when a working baseline
+already existed, and reframing the action space around correcting that baseline instead of
+replacing it. 17/20 vs. 11/20 scripted: a genuine, verified improvement from a comparatively
+small amount of additional training (single stage, same 3M-timestep budget as the failed
+from-scratch attempts).
 
 ## Repository layout
 
@@ -528,7 +557,7 @@ barrett_wam/
 │   ├── stage5_pick_and_place.gif
 │   ├── rl_close_success.gif
 │   └── rl_close_failure.gif
-├── rl/                               # RL experiment, see writeup above (best 3/20, 0/20 clean, vs 11/20 scripted)
+├── rl/                               # RL experiment, see writeup above (residual action: 17/20 vs 11/20 scripted)
 │   ├── build_states.py               # precomputes post-descend states -> states.npz
 │   ├── states.npz
 │   ├── grasp_env.py                  # Gymnasium env for the close-phase sub-problem
