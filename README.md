@@ -343,9 +343,9 @@ directly. `rl/` holds the result: a working PPO training pipeline (`stable_basel
 matching [`go1_rl_walk`](../go1_rl_walk)'s own conventions -- PPO for its native continuous
 actions and on-policy robustness to reward-function churn, `SubprocVecEnv` + `VecNormalize` +
 `VecMonitor`, per-run `args.json` for reproducibility) that, after three iterations of
-debugging real RL failure modes, reaches **2/20** on the same held-out eval as the scripted
-baseline's 11/20 -- confirmed, non-zero, but well below the hand-engineered approach in the
-time budget this took.
+debugging real RL failure modes (below) plus a fourth, orthogonal environment bug (also
+below), reaches **3/20** on the same held-out eval as the scripted baseline's 11/20 --
+confirmed, non-zero, but well below the hand-engineered approach in the time budget this took.
 
 **Scope**: rather than learning the whole pick (a much larger, longer-horizon problem), the
 policy controls only the close phase identified above -- pregrasp/descend/lift stay exactly
@@ -389,6 +389,26 @@ symptoms look superficially similar but the fixes are not):
    produces a grip that actually survives the lift check. Fixed by rescaling the dense term
    down 50x, small enough to only ever contribute a gradient hint, not compete with the real
    objective.
+4. **(Found later, while generating a demo GIF) Episodes weren't actually independent.**
+   `GraspCloseEnv.reset()` reloads the arm and object from the cached state pool but never
+   touched the *hand's own* qpos/qvel -- so every episode but the first in a given env instance
+   started with fingers wherever the *previous* episode's close action left them, not open as
+   the problem assumes. Invisible in training curves (reward still correlates with closing
+   well), but it meant `eval_policy.py`'s 20 "independent" trials weren't independent: trial
+   order gave later trials a free head start. Caught by comparing a single fresh rollout
+   against the eval script's in-sequence one for the same seed and getting different outcomes
+   for the identical starting state -- a bug, not noise. Fixed by explicitly zeroing hand
+   qpos/qvel in `reset()`. Re-running eval after the fix dropped the second experiment's result
+   from 4/20 to the honest **3/20** reported above (seeds 6/9/18 succeed; seed 2, one of the
+   original 4, does not). Since `SubprocVecEnv` workers also run many consecutive episodes per
+   instance, this affected *training* too, not just eval -- so the clean fix means future runs
+   aren't directly comparable to the pre-fix 2/20 and 4/20 numbers below, which are left as
+   originally reported (their checkpoints are no longer on disk to re-verify) rather than
+   silently rewritten.
+
+| | seed 6 (success) | seed 0 (failure) |
+|---|---|---|
+| | ![rl close success](media/rl_close_success.gif) | ![rl close failure](media/rl_close_failure.gif) |
 
 Rescaling the dense term down that far *from scratch*, though, starved exploration back to
 zero successes again (same failure mode as #1, at a different weight) -- confirming the
@@ -435,7 +455,8 @@ python3 rl/eval_policy.py --run-name stage2
 ```
 
 **Net assessment**: real, repeatable, improves with more data/compute as expected -- but a
-clear loss to the scripted baseline (4/20 vs 11/20 at best) within the time invested here.
+clear loss to the scripted baseline (3/20 vs 11/20 at best, post-fix) within the time invested
+here.
 Closing the gap further would plausibly take some mix of: more training time (the trend above
 suggests it hasn't plateaued), a reward shaped more carefully around the specific
 lift-survival criterion rather than raw contact force, or an algorithm better suited to sparse
@@ -472,13 +493,16 @@ barrett_wam/
 │   ├── stage2_reach_target.gif
 │   ├── stage3_moving_target.gif
 │   ├── stage4_grasp.gif
-│   └── stage5_pick_and_place.gif
-├── rl/                               # RL experiment, see writeup above (2/20 vs the 11/20 baseline)
+│   ├── stage5_pick_and_place.gif
+│   ├── rl_close_success.gif
+│   └── rl_close_failure.gif
+├── rl/                               # RL experiment, see writeup above (3/20 vs the 11/20 baseline)
 │   ├── build_states.py               # precomputes post-descend states -> states.npz
 │   ├── states.npz
 │   ├── grasp_env.py                  # Gymnasium env for the close-phase sub-problem
 │   ├── train.py                      # PPO training (stable_baselines3), --resume for staged runs
 │   ├── eval_policy.py                # 20-trial held-out eval, comparable to eval_stage4_grasp.py
+│   ├── demo_rl_close.py              # renders one seed end-to-end, see media/ GIFs above
 │   └── runs/                         # training checkpoints/logs (gitignored, not committed)
 ├── requirements.txt
 └── README.md

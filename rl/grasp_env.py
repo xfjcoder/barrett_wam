@@ -185,6 +185,12 @@ class GraspCloseEnv(gym.Env):
         self.data.qvel[:N_ARM] = self.pool["arm_qvel"][idx]
         self.data.qpos[self.obj_qadr:self.obj_qadr + 7] = self.pool["obj_qpos"][idx]
         self.data.qvel[self.obj_dof:self.obj_dof + 6] = self.pool["obj_qvel"][idx]
+        # the hand's own qpos/qvel are NOT part of the cached pool (only arm+object are) and
+        # were previously left untouched here, leaking whatever configuration the *previous*
+        # episode's close action ended on into the next episode's "fingers open" start -- every
+        # episode but the first in a given env instance got a free head start. Reset explicitly.
+        self.data.qpos[self._hand_qadr] = 0.0
+        self.data.qvel[self._hand_dof] = 0.0
         self.q_arm = self.pool["arm_qpos"][idx].copy()
         self.obj_xy_start = self.pool["obj_xy"][idx].copy()
         self.closes = {"finger_1": 0.0, "finger_2": 0.0, "finger_3": 0.0}
