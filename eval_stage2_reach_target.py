@@ -6,6 +6,10 @@ target, then run closed-loop position-actuator control under gravity for a fixed
 check the end-effector site's final distance to the target. Judged over multiple random seeds
 (not a single run), per this project's inherited eval convention.
 
+IK uses solve_ik_multistart: a first solve from the arm's actual current pose, falling back to
+random-restart only if that one gets stuck (see ik.py's docstring for the joint-limit deadlock
+this works around -- found by digging into exactly this eval's original 17/20 result).
+
 Usage:
     python3 eval_stage2_reach_target.py --trials 12 --seconds 3.0
 """
@@ -15,7 +19,7 @@ import mujoco as mj
 import numpy as np
 
 from control import pd_gravity_comp_step
-from ik import solve_ik, N_ARM
+from ik import solve_ik_multistart, N_ARM
 
 URDF = "assets/wam7_bhand.xml"
 SITE = "wam/ee_site"
@@ -36,8 +40,9 @@ def random_target(model, rng):
     return data.site_xpos[site_id].copy(), q_rand
 
 
-def run_trial(model, target_pos, q_start, seconds):
-    q_ik, ik_ok, ik_iters = solve_ik(model, target_pos, q_start)
+def run_trial(model, target_pos, q_start, seconds, restart_rng):
+    q_ik, ik_ok, ik_iters, n_restarts = solve_ik_multistart(
+        model, target_pos, q_start, restart_rng=restart_rng)
 
     data = mj.MjData(model)
     data.qpos[:N_ARM] = q_start
@@ -49,7 +54,7 @@ def run_trial(model, target_pos, q_start, seconds):
         pd_gravity_comp_step(model, data, q_ik)
 
     final_dist = float(np.linalg.norm(data.site_xpos[site_id] - target_pos))
-    return dict(ik_ok=ik_ok, ik_iters=ik_iters, final_dist=final_dist,
+    return dict(ik_ok=ik_ok, ik_iters=ik_iters, n_restarts=n_restarts, final_dist=final_dist,
                 reached=final_dist < TOL)
 
 
@@ -67,10 +72,11 @@ def main():
         rng = np.random.default_rng(args.base_seed + i)
         target_pos, _ = random_target(model, rng)
         q_start = np.zeros(N_ARM)  # every trial starts from the same home pose
-        r = run_trial(model, target_pos, q_start, args.seconds)
+        restart_rng = np.random.default_rng(10_000 + args.base_seed + i)
+        r = run_trial(model, target_pos, q_start, args.seconds, restart_rng)
         results.append(r)
         print(f"trial {i:2d} seed={args.base_seed + i:4d} target={np.round(target_pos, 3)} "
-              f"ik_ok={r['ik_ok']} ik_iters={r['ik_iters']:3d} "
+              f"ik_ok={r['ik_ok']} ik_iters={r['ik_iters']:3d} n_restarts={r['n_restarts']:2d} "
               f"final_dist={r['final_dist']:.4f}m reached={r['reached']}")
 
     n_reached = sum(r["reached"] for r in results)

@@ -18,12 +18,12 @@ from PIL import Image
 
 from control import pd_gravity_comp_step
 from eval_stage2_reach_target import random_target, URDF, SITE
-from ik import solve_ik, N_ARM
+from ik import solve_ik_multistart, N_ARM
 
-# Seeds chosen from eval_stage2_reach_target.py's own --trials 20 sweep (base-seed 0): all
-# four had ik_ok=True there, so this demo exercises the arm's working path, not its known
-# IK-convergence gap (seeds 1/9/14 in that sweep -- see Stage 2 README writeup).
-DEMO_SEEDS = [2, 12, 15, 18]
+# seed=1 used to be one of the 3 trials eval_stage2_reach_target.py's original sweep couldn't
+# solve at all (a joint-limit deadlock from home -- see README's Stage 2 writeup and ik.py's
+# solve_ik_multistart docstring for the fix); kept here deliberately to show it now works.
+DEMO_SEEDS = [1, 2, 15, 18]
 SECONDS_PER_TARGET = 4.0
 
 
@@ -57,11 +57,13 @@ def main():
     data.qpos[:N_ARM] = q_current
     mj.mj_forward(model, data)
 
+    restart_rng = np.random.default_rng(30_000)
     for seed in DEMO_SEEDS:
         rng = np.random.default_rng(seed)
         target_pos, _ = random_target(model, rng)
         data.mocap_pos[0] = target_pos
-        q_ik, ik_ok, _ = solve_ik(model, target_pos, q_current)
+        q_ik, ik_ok, _, n_restarts = solve_ik_multistart(model, target_pos, q_current,
+                                                          restart_rng=restart_rng)
 
         n_steps = int(SECONDS_PER_TARGET / model.opt.timestep)
         for step in range(n_steps):
@@ -71,8 +73,8 @@ def main():
 
         q_current = data.qpos[:N_ARM].copy()
         final_dist = float(np.linalg.norm(data.site_xpos[site_id] - target_pos))
-        print(f"seed={seed} ik_ok={ik_ok} target={np.round(target_pos, 3)} "
-              f"final_dist={final_dist:.4f}m")
+        print(f"seed={seed} ik_ok={ik_ok} n_restarts={n_restarts} "
+              f"target={np.round(target_pos, 3)} final_dist={final_dist:.4f}m")
 
     if args.record:
         from pathlib import Path

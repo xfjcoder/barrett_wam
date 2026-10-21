@@ -1,10 +1,10 @@
 """Stage 3 demo: the arm tracking a moving (circling) target in closed loop.
 
-Same IK (ik.py) and controller (control.py) as Stage 2, but now warm-started each step from
-the arm's current pose and re-solved continuously against trajectory.circle_target's moving
-position, instead of solving once for a static target. The green sphere is the moving
-target; the red dot on the palm is the end-effector site chasing it, with a small visible
-tracking lag -- see eval_stage3_moving_target.py for the measured lag.
+Same controller (control.py) as Stage 2, with IK (solve_ik_multistart, see ik.py) warm-started
+each step from the arm's current pose and re-solved continuously against
+trajectory.circle_target's moving position, instead of solving once for a static target. The
+green sphere is the moving target; the red dot on the palm is the end-effector site chasing
+it, with a small visible tracking lag -- see eval_stage3_moving_target.py for the measured lag.
 
 Usage:
     python3 demo_stage3_moving_target.py --record media/stage3_moving_target.gif
@@ -17,7 +17,7 @@ from PIL import Image
 
 from control import pd_gravity_comp_step
 from eval_stage2_reach_target import random_target, URDF, SITE
-from ik import solve_ik, N_ARM
+from ik import solve_ik_multistart, N_ARM
 from trajectory import circle_target
 
 # seed=2 from eval_stage3_moving_target.py's own sweep: tracked (steady mean error ~4cm), with
@@ -54,12 +54,14 @@ def main():
     frames = []
     dt = model.opt.timestep
     n_steps = int(SECONDS / dt)
+    restart_rng = np.random.default_rng(20_000 + SEED)
     errs = []
     for i in range(n_steps):
         t = i * dt
         target = circle_target(t, center, RADIUS, OMEGA)
         data.mocap_pos[0] = target
-        q_ik, _, _ = solve_ik(model, target, data.qpos[:N_ARM], max_iters=20, tol=0.003)
+        q_ik, _, _, _ = solve_ik_multistart(model, target, data.qpos[:N_ARM], max_iters=20,
+                                             tol=0.003, n_restarts=5, restart_rng=restart_rng)
         pd_gravity_comp_step(model, data, q_ik)
         errs.append(float(np.linalg.norm(data.site_xpos[site_id] - target)))
         if i % 20 == 0:

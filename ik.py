@@ -36,3 +36,31 @@ def solve_ik(model, target_pos, q_init, site_name="wam/ee_site",
     mj.mj_forward(model, data)
     err = target_pos - data.site_xpos[site_id]
     return q, np.linalg.norm(err) < tol, max_iters
+
+
+def solve_ik_multistart(model, target_pos, q_init, site_name="wam/ee_site",
+                         n_restarts=20, restart_rng=None, **kwargs):
+    """solve_ik, falling back to random-restart if the warm-started solve gets stuck.
+
+    Damped-least-squares IK with joint-limit clipping can deadlock: the descent direction
+    that would reduce Cartesian error pushes an already-at-limit joint further out, clipping
+    resets it to the limit every iteration, and if every error-reducing direction needs an
+    already-pinned joint, the solver has nowhere left to go -- error stops decreasing for good,
+    not just slowly. Confirmed directly (see barrett_wam's Stage 2/3 writeups): 3+ joints
+    pinned exactly at their range limits, residual error frozen for 150+ iterations. A
+    different starting posture almost always avoids pinning those same joints -- every
+    deadlock found in practice resolved on the very first random restart.
+    """
+    q, ok, it = solve_ik(model, target_pos, q_init, site_name=site_name, **kwargs)
+    if ok:
+        return q, True, it, 0
+    if restart_rng is None:
+        restart_rng = np.random.default_rng(0)
+    lo = model.jnt_range[:N_ARM, 0]
+    hi = model.jnt_range[:N_ARM, 1]
+    for r in range(n_restarts):
+        q_try = restart_rng.uniform(lo, hi)
+        q2, ok2, it2 = solve_ik(model, target_pos, q_try, site_name=site_name, **kwargs)
+        if ok2:
+            return q2, True, it2, r + 1
+    return q, False, it, n_restarts

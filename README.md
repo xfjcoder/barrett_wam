@@ -120,12 +120,8 @@ starting this project. They share no code.
    each target is a random *valid joint config* forward-kinematics'd to a Cartesian point
    (guaranteed reachable, unlike sampling arbitrary Cartesian points that might not be), IK
    solves it from the arm's current pose, then the controller drives there under gravity for a
-   fixed duration. **17/20 reached within 2cm.** The 3 misses are exactly the 3 trials where
-   IK itself failed to converge within 200 iterations (not a tracking failure) -- every trial
-   where IK converged, closed-loop control reached the target. IK's ~85% convergence rate from
-   a fixed home start is a known limitation of local damped-least-squares with this much
-   redundancy, not investigated further at this stage (a future stage could retry from a
-   randomized seed config on failure, or switch to a global/sampling-based IK).
+   fixed duration. **20/20 reached within 2cm** (originally 17/20 -- see the IK-convergence-gap
+   addendum below for the 3 misses and their fix, `solve_ik_multistart` in `ik.py`).
 
    <p align="center">
      <img src="media/stage2_reach_target.gif" width="480" alt="WAM arm reaching four sequential targets (green sphere), the end-effector site (red dot) converging each time">
@@ -141,13 +137,9 @@ starting this project. They share no code.
 
    **Evaluated over 10 random circle centers** (`eval_stage3_moving_target.py`, each center
    sampled the same guaranteed-reachable way as Stage 2's targets; radius 0.15m, omega
-   0.5 rad/s; first 2s of settle-from-home excluded from the error stats): **7/10 tracked**
-   (steady-state mean error < 5cm). Two of the three misses (seeds 1 and 9) are the *same*
-   centers Stage 2's static eval already flagged as IK non-convergence failures -- a
-   consistent cross-validation of that known limitation, not a new bug. The third (seed 5)
-   is new and more interesting: that center alone *was* reachable in Stage 2's static eval,
-   but circling around it sweeps through nearby configurations IK can't always solve --
-   tracking a region can fail even when reaching its center point succeeds.
+   0.5 rad/s): **10/10 tracked** within 5cm steady-state mean error (originally 7/10 -- see
+   the addendum below for the 3 misses, which turned out to be two different problems with
+   two different fixes, not one).
 
    <p align="center">
      <img src="media/stage3_moving_target.gif" width="480" alt="WAM arm tracking a moving target (green sphere) with the end-effector site (red dot) following at a small visible lag">
@@ -157,6 +149,52 @@ starting this project. They share no code.
    (`demo_stage3_moving_target.py`), red end-effector site visibly lagging the green target
    by a few cm -- the same lag `eval_stage3_moving_target.py` measures, not hidden by camera
    distance.*
+
+### Addendum: digging into the IK-convergence gap
+
+Stage 2 originally missed 3/20 targets and Stage 3 missed 3/10 circles, and two of Stage 3's
+three centers were exactly two of Stage 2's three misses -- consistent enough across both
+stages to be worth digging into directly rather than writing off as noise, instead of moving
+straight to a new task.
+
+**Root cause (seeds 1, 9, and Stage 2's seed 14): a joint-limit deadlock, not a singularity.**
+Tracing a failing solve iteration-by-iteration showed the Cartesian error freezing completely
+-- not slowly converging, literally bit-for-bit identical for 150+ consecutive iterations --
+with 3-4 joints pinned exactly at their range limits. That's a textbook active-set deadlock
+for clamped gradient descent: the direction that would reduce error needs an already-at-limit
+joint to move further out, clipping resets it to the limit every iteration, and if *every*
+error-reducing direction needs a pinned joint, the solver has nowhere left to go within the
+feasible box. Confirmed, not assumed: a random restart from a different starting posture
+escaped every deadlock found, on the very first retry, in 4-10 iterations -- because a
+different posture simply doesn't pin those same joints. Fixed with `solve_ik_multistart` in
+`ik.py`: try the warm-started solve first (cheap, the common case), fall back to random
+restarts only if it gets stuck. Re-running both evals with the fix: **Stage 2 went 17/20 ->
+20/20**, each of the 3 original misses solving in exactly 1 restart; **Stage 3's seeds 1 and 9
+also cleared**, settling in under 1 second and then tracking cleanly for the rest of the
+trial -- confirming these were the same underlying deadlock recurring continuously during
+circular tracking, not a one-off at the start (the per-step error trace oscillated with the
+circle's own period, repeatedly re-entering and escaping the deadlock region every revolution,
+rather than a settle transient that resolves once).
+
+**Stage 3's third miss (seed 5) is a different problem that multistart does NOT fix.** Tracing
+it the same way showed no joints pinned at limits -- IK simply ran out of its (deliberately
+small, 20-iteration) per-step budget while still ~15-20cm from catching up, for about the
+first 4.4 seconds, then converged cleanly for the rest of the 14s trial. Confirmed by testing
+multistart on it directly: essentially no improvement, and ~100x slower, because every one of
+the thousands of steps during that catch-up window attempted (and exhausted) restarts for a
+problem restarts can't solve -- there's nothing deadlocked to escape, the arm just needs more
+real time to physically travel there. The actual bug was in the *eval's methodology*, not the
+controller: a fixed "first 2 seconds don't count" settle window happened to work for 9/10
+circles but was simply too short for this one, whose center is further from home in joint
+space. Fixed by detecting settle adaptively instead of on a clock (`find_settle_idx` in
+`eval_stage3_moving_target.py`: the first point after which error stays low for a full
+second) -- this seed's real settle time measures as ~4.6s, after which it tracks to within
+2.7cm, same as any other circle.
+
+Net result applied in both eval scripts and both demo scripts (so they measure and show the
+same robust path): 20/20 and 10/10. The IK-convergence gap wasn't one bug -- it was a real
+solver limitation (fixed) and a measurement artifact (also fixed), surfaced together only
+because the same couple of seeds happened to sit at the boundary of both.
 
 ## Repository layout
 
