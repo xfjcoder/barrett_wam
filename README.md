@@ -17,6 +17,46 @@ repo simulates), which is unrelated to the sibling `wam` repo's "World Action Mo
 dynamics model for the Unitree Go2 quadruped) -- a naming collision flagged and resolved before
 starting this project. They share no code.
 
+## Project summary -- closed
+
+<p align="center">
+  <img src="media/stage1_kinematic_sweep.gif" width="280" alt="Stage 1: each of the 7 arm joints swept through its own range, then the hand closing and opening">
+  <img src="media/stage4_grasp.gif" width="280" alt="Stage 4: the arm descending onto a sphere, closing the hand around it, and lifting it clear of the table">
+  <img src="media/stage5_pick_and_place_rl.gif" width="280" alt="Stage 5 revisited: pick-and-place with the trained residual-RL close policy">
+</p>
+
+*Left to right: Stage 1's verification sweep (first real motion), Stage 4's core grasp
+capability, Stage 5's pick-and-place revisited with the trained residual-RL close policy --
+the project's final, most-capable result.*
+
+Five staged capabilities plus a full RL side-quest, closed here. In brief, what got built and
+what it found:
+
+- **A real Barrett WAM + BHand MuJoCo model, built from scratch** (Stage 1) -- no ready-made
+  model existed anywhere in this environment, so this meant fixing real import problems (unresolvable
+  xacro package refs, undecodable `.dae` collision meshes, one link's degenerate inertia tensor),
+  not just loading an existing asset.
+- **Reach, track, grasp, then pick-and-place** (Stages 2-5), each verified over 10-20 randomized
+  trials rather than a single run. The IK-convergence gap that showed up in both Stage 2 and
+  Stage 3 turned out to be two unrelated problems (a joint-limit deadlock, fixed with multistart
+  random restarts; a separate eval-methodology bug, fixed with adaptive settle detection) --
+  17/20->20/20 and 7/10->10/10 once both were found and fixed.
+- **Grasp reliability investigated with three negative results, reported rather than hidden**:
+  per-finger contact-triggered closing, a settle period, and a wider finger spread all failed to
+  improve on the baseline 11/20 (one made it actively worse) -- closed as a genuine
+  approach-direction/geometry sensitivity, not chased further.
+- **An RL side-quest: can a learned policy beat the scripted close ramp?** Three distinct,
+  diagnosed RL failure modes (sparse reward, a penalty-asymmetry trap, reward hacking), then an
+  environment bug (leaked hand state across episodes) that had quietly been propping up the
+  result -- fixing it exposed a clean **0/20**. The fix was reframing the action space: instead
+  of learning the close behavior from scratch, the policy outputs a bounded *correction* on top
+  of the already-working scripted baseline. Result: **17/20**, a genuine win over the scripted
+  baseline's 11/20, confirmed to carry over into the full pick-and-place task too (**17/20
+  picked, 14/20 placed**, vs. 11/20 picked / 9/20 placed scripted).
+
+No further stages are planned on this repo unless reopened; see `barrett-wam-staged-plan` memory
+for the full per-stage history and every commit hash.
+
 ## Scoping decisions
 
 - **Platform: the real Barrett WAM 7-DOF arm + BarrettHand**, not a more commonly-available
