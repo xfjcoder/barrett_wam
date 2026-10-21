@@ -134,6 +134,30 @@ starting this project. They share no code.
    *Stage 2's demo: the arm reaching 4 sequential random targets in one continuous episode
    (`demo_stage2_reach_target.py`), each converging to within 6mm.*
 
+3. **Track a moving target -- DONE.** Same IK (`ik.py`) and controller (`control.py`) as
+   Stage 2, but the target now moves (a horizontal circle, `trajectory.py`) and IK is
+   warm-started from the arm's current pose each step with few iterations and a loose
+   tolerance -- a continuous resolved-rate tracking loop rather than a one-shot solve.
+
+   **Evaluated over 10 random circle centers** (`eval_stage3_moving_target.py`, each center
+   sampled the same guaranteed-reachable way as Stage 2's targets; radius 0.15m, omega
+   0.5 rad/s; first 2s of settle-from-home excluded from the error stats): **7/10 tracked**
+   (steady-state mean error < 5cm). Two of the three misses (seeds 1 and 9) are the *same*
+   centers Stage 2's static eval already flagged as IK non-convergence failures -- a
+   consistent cross-validation of that known limitation, not a new bug. The third (seed 5)
+   is new and more interesting: that center alone *was* reachable in Stage 2's static eval,
+   but circling around it sweeps through nearby configurations IK can't always solve --
+   tracking a region can fail even when reaching its center point succeeds.
+
+   <p align="center">
+     <img src="media/stage3_moving_target.gif" width="480" alt="WAM arm tracking a moving target (green sphere) with the end-effector site (red dot) following at a small visible lag">
+   </p>
+
+   *Stage 3's demo: the arm tracking \~1.25 circles of a moving target
+   (`demo_stage3_moving_target.py`), red end-effector site visibly lagging the green target
+   by a few cm -- the same lag `eval_stage3_moving_target.py` measures, not hidden by camera
+   distance.*
+
 ## Repository layout
 
 ```
@@ -144,12 +168,16 @@ barrett_wam/
 │   └── meshes/                # 13 STL meshes the URDF references (bhand/ subdir for the hand)
 ├── ik.py                            # Stage 2: damped-least-squares Jacobian IK
 ├── control.py                       # Stage 2: PD + gravity-compensation controller
+├── trajectory.py                    # Stage 3: moving (circular) target generator
 ├── eval_stage2_reach_target.py      # Stage 2: 20-trial random-target eval
+├── eval_stage3_moving_target.py     # Stage 3: 10-trial moving-target tracking eval
 ├── demo_stage1_kinematic_sweep.py   # Stage 1: verification sweep, see media/ GIF above
 ├── demo_stage2_reach_target.py      # Stage 2: 4-target reach demo, see media/ GIF above
+├── demo_stage3_moving_target.py     # Stage 3: moving-target tracking demo, see media/ GIF
 ├── media/
 │   ├── stage1_kinematic_sweep.gif
-│   └── stage2_reach_target.gif
+│   ├── stage2_reach_target.gif
+│   └── stage3_moving_target.gif
 ├── requirements.txt
 └── README.md
 ```
