@@ -287,6 +287,26 @@ starting this project. They share no code.
    *Stage 5's demo: the arm picking the sphere up, carrying it across the table
    (`demo_stage5_pick_and_place.py`), and releasing it at the place target.*
 
+   **Revisited with residual RL (see RL section below): picked 17/20, placed 14/20.**
+   `eval_stage5_pick_and_place_rl.py` swaps only the close phase for the trained
+   `close08_residual` policy -- everything else (pregrasp/descend/lift/transport/lower/
+   release/retract) is unchanged. Getting this right needed one more fix beyond the close
+   phase itself: the lift/transport/lower code originally called
+   `hand.set_targets(..., GRIP_CLOSE)`, a *uniform* close value, which silently overwrote the
+   policy's asymmetric per-finger grip (e.g. one finger deliberately held back to cage the
+   object) the instant the lift began -- discarding exactly the thing residual RL contributes.
+   Holding the policy's exact per-finger closes through lift/transport/lower instead (only
+   releasing them, per finger, at the very end) took picked from 15/20 to the full 17/20
+   matching the isolated close-phase eval, confirming it was the actual bug rather than
+   something unfixable. Placed: 14/20, up from the scripted baseline's 9/20.
+
+   <p align="center">
+     <img src="media/stage5_pick_and_place_rl.gif" width="480" alt="WAM arm picking a sphere off the table using the residual-RL close policy, carrying it to a second spot, and releasing it there">
+   </p>
+
+   *Same pick-and-place task, residual-RL close phase (`demo_stage5_pick_and_place_rl.py`,
+   seed 1, a placed success).*
+
 ### Addendum: digging into the IK-convergence gap
 
 Stage 2 originally missed 3/20 targets and Stage 3 missed 3/10 circles, and two of Stage 3's
@@ -505,8 +525,21 @@ python3 rl/eval_policy.py --run-name close08_residual
 Result: **17/20** -- a real win over the scripted baseline's 11/20, re-verified with fresh
 standalone rollouts (not just the in-sequence eval loop, after getting burned once already by
 trial-order leakage) for both the failures and a sample of the successes, all reproducing
-exactly. The three seeds it still fails on (9, 15, 16) are presumably the genuinely hard
-geometries within this object/gripper setup; not yet characterized further.
+exactly.
+
+**What's different about the three remaining failures (seeds 9, 15, 16)?** The BHand here is
+functionally a 2-vs-1 pinch for this sphere: `finger_1` (nominally side-by-side with
+`finger_2`) never registers contact force in *any* trial, success or failure -- it's
+geometrically out of range at this object size/position, so `finger_2` and `finger_3` are
+doing the actual gripping. Comparing per-finger force traces and final close values, all three
+failures share a signature distinct from "grip slips during lift": the object's rise during
+the lift check is ~0mm (not partial), i.e. the grip never forms a secure hold in the first
+place, with drift sitting right at the 5cm threshold. In a success case (seed 6), the policy
+holds `finger_3` back substantially (closing to 0.59 vs. `finger_2`'s 1.0) to form an
+asymmetric cage; in all three failures, it closes both `finger_2` and `finger_3` to 0.76-1.0 --
+not asymmetric enough to cage the object at these particular geometries, over-constraining it
+instead. Points at a residual-bound or training-coverage limit for this specific regime of
+table positions, not a sensing gap -- not pursued further here.
 
 | | seed 0 (success) | seed 9 (failure) |
 |---|---|---|
@@ -522,7 +555,11 @@ unconstrained from-scratch control was the wrong problem framing when a working 
 already existed, and reframing the action space around correcting that baseline instead of
 replacing it. 17/20 vs. 11/20 scripted: a genuine, verified improvement from a comparatively
 small amount of additional training (single stage, same 3M-timestep budget as the failed
-from-scratch attempts).
+from-scratch attempts). Confirmed to carry over into the full pick-and-place task too (Stage
+5's writeup above: 17/20 picked, 14/20 placed, vs. 11/20 / 9/20 scripted) -- once a second,
+unrelated integration bug (the lift phase silently overwriting the learned grip with a uniform
+close) was found and fixed the same way as everything else here: by checking a surprising
+number against a reasoned expectation rather than accepting it.
 
 ## Repository layout
 
@@ -544,17 +581,20 @@ barrett_wam/
 ├── eval_stage3_moving_target.py     # Stage 3: 10-trial moving-target tracking eval
 ├── eval_stage4_grasp.py             # Stage 4: 20-trial random-table-position grasp eval
 ├── eval_stage5_pick_and_place.py    # Stage 5: 20-trial pick-and-place eval
+├── eval_stage5_pick_and_place_rl.py # Stage 5 + residual-RL close phase: 17/20 picked, 14/20 placed
 ├── demo_stage1_kinematic_sweep.py   # Stage 1: verification sweep, see media/ GIF above
 ├── demo_stage2_reach_target.py      # Stage 2: 4-target reach demo, see media/ GIF above
 ├── demo_stage3_moving_target.py     # Stage 3: moving-target tracking demo, see media/ GIF
 ├── demo_stage4_grasp.py             # Stage 4: pick-up demo, see media/ GIF above
 ├── demo_stage5_pick_and_place.py    # Stage 5: pick-and-place demo, see media/ GIF above
+├── demo_stage5_pick_and_place_rl.py # Stage 5 + residual-RL close phase demo, see media/ GIF above
 ├── media/
 │   ├── stage1_kinematic_sweep.gif
 │   ├── stage2_reach_target.gif
 │   ├── stage3_moving_target.gif
 │   ├── stage4_grasp.gif
 │   ├── stage5_pick_and_place.gif
+│   ├── stage5_pick_and_place_rl.gif
 │   ├── rl_close_success.gif
 │   └── rl_close_failure.gif
 ├── rl/                               # RL experiment, see writeup above (residual action: 17/20 vs 11/20 scripted)
