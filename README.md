@@ -150,6 +150,89 @@ starting this project. They share no code.
    by a few cm -- the same lag `eval_stage3_moving_target.py` measures, not hidden by camera
    distance.*
 
+4. **Grasping -- DONE.** Picks a small sphere up off a table with the BHand -- the thing
+   Stage 1 and 2 both flagged and deferred ("revisit if a later grasping stage needs tighter
+   finger-pad collision geometry").
+
+   - **New MJCF build script** (`assets/build_stage4_mjcf.py`), sharing Stage 2's arm-
+     actuator/site/self-collision-disable logic via a new `assets/mjcf_common.py` (pulled out
+     once Stage 4 needed the same pieces -- confirmed the refactor changed nothing by
+     regenerating Stage 2's own `wam7_bhand.xml` and diffing it byte-for-byte against the
+     pre-refactor file). On top of that, it adds:
+     - **Primitive hand collision** -- capsules for each finger segment, a box for the palm.
+       Sized from the URDF's own joint-tree offsets (each segment's capsule runs from its
+       link's origin to its *child* joint's origin -- the physical "bone," read directly off
+       the kinematic tree) rather than fit to the mesh's bounding box: the mesh AABB's long
+       axis doesn't track the segment's kinematic axis here (each finger link's knuckle/motor-
+       housing bulk dominates its bounding box more than the slender arm does), and the palm
+       box, built the same bounding-box way, first came out oversized and oddly tilted --
+       traced to taking the AABB in the mesh's own raw (uncorrected) vertex frame and then
+       rotating the result, rather than rotating the vertices into the body's frame *first*.
+     - **8 position actuators** for the BHand's finger joints (no gravity-comp feedforward --
+       the links are light enough, and grasping's tolerance is coarser than Stage 2's 2cm,
+       that plain `kp`+`kv` suffices).
+     - **A static table and a free-floating sphere** to grasp. Sphere, not a box or cylinder,
+       specifically so the grasp doesn't depend on a roll angle nothing in this pipeline
+       controls (see the orientation note below).
+   - **Orientation turned out to be the hard part, in two different ways.** First attempt:
+     extend `ik.py` to a combined 6D (position+orientation) solve, targeting an exact "palm
+     straight down" quaternion. This fought the arm's own joint limits at the table-height
+     region hard enough that even `solve_ik_multistart`'s random restarts couldn't escape it
+     (same deadlock signature as Stage 2/3's gap -- joints pinned at their range limits -- but
+     this time *every* restart hit the same conflict). Dropped it (flagged in `ik.py`'s module
+     docstring as a tried-and-abandoned approach, not silently removed). Plain position-only
+     IK turned out to have a *different* problem instead: which of its 4 redundant DOF it
+     lands on for a given target is path-dependent, not a function of the target alone --
+     continuously warm-starting small steps from home consistently landed on an "upside-down"
+     branch (palm facing up and back), confirmed by direct measurement of the site's world-
+     frame z-axis. Fixed with `best_oriented_ik` (`eval_stage4_grasp.py`): try many random
+     starting postures, keep only the ones where position IK actually converges, and
+     explicitly pick whichever valid solution faces most nearly straight down -- the same
+     outcome the 6D attempt wanted, reached by selecting among valid solutions instead of
+     constraining the solve.
+   - **The pregrasp jump isn't collision-aware, so the object is placed after it, not before.**
+     `best_oriented_ik`'s chosen joint config can be a large, unplanned joint-space jump from
+     home, and the swept Cartesian path on the way there isn't controlled at all -- confirmed
+     directly: with the object already on the table, the hand swept through and launched it
+     clear across the table before the descend phase even started. Fixed by only placing the
+     object once the arm has safely parked at its standoff pose above the table -- an
+     idealized reach that assumes a real motion planner would route the approach around the
+     table; planning that route is a separate problem from grasping itself and stayed out of
+     scope here.
+   - **Full closure isn't the tightest grip.** Counterintuitively, `close=1.0` (full curl) is
+     *not* the closest the fingertips get to the object: the fixed med->dist coupling ratio
+     (`hand_control.py`) makes the fingertip's distance to the grasp point bottom out around
+     70-75% closed and then swing back *out* past that. Commanding full closure was quietly
+     retracting the fingers off the object rather than gripping it. Measured the true minimum
+     directly instead of assuming 1.0 was it, and used that (`GRIP_CLOSE = 0.75`).
+   - **A frictionless-rolling sphere never stops.** MuJoCo's default contact (`condim=3` or
+     `4`) damps sliding and spin but not rolling -- confirmed directly that a bare few-cm
+     sideways nudge during the close ramp set the ball rolling, and it coasted clean across
+     the table for the rest of the episode with no further contact forcing it (expected rigid-
+     body behavior for a perfect sphere, not a bug, just one that matters here). Fixed with
+     `condim=6` and an explicit rolling-friction coefficient on every hand/table/object contact
+     geom -- deliberately exaggerated well past a physically accurate value for a hard ball, so
+     that a nudged object settles within the length of one episode rather than coasting for the
+     rest of it.
+
+   **Evaluated over 20 random table positions** (`eval_stage4_grasp.py`): **11/20 grasped**
+   (object rose more than 9cm of a commanded 15cm lift, and settled within 5cm of its starting
+   position). The remaining 9 fail cleanly rather than messily: every failure has the object's
+   rise pinned at effectively zero (never left the table at all) and a 5-10cm drift -- nudged
+   just outside the fingers' reach during the close/squeeze, not launched or crushed. The
+   orientation score alone doesn't predict the outcome (one 0.993-scoring trial failed while a
+   0.966-scoring one succeeded), so whatever's left looks like approach-direction/centering
+   sensitivity during the close phase rather than one more isolated bug -- flagged here rather
+   than chased further, same spirit as Stage 2 and 3's own less-than-perfect first numbers.
+
+   <p align="center">
+     <img src="media/stage4_grasp.gif" width="480" alt="WAM arm descending onto a sphere on a table, closing the BHand's fingers around it, and lifting it clear of the table">
+   </p>
+
+   *Stage 4's demo: the arm descending onto a sphere on a table
+   (`demo_stage4_grasp.py`), closing the hand's three fingers around it, and lifting it clear
+   of the table surface.*
+
 ### Addendum: digging into the IK-convergence gap
 
 Stage 2 originally missed 3/20 targets and Stage 3 missed 3/10 circles, and two of Stage 3's
@@ -202,20 +285,28 @@ because the same couple of seeds happened to sit at the boundary of both.
 barrett_wam/
 ├── assets/
 │   ├── wam7_bhand.urdf        # Stage 1: vendored + fixed, see writeup above
+│   ├── mjcf_common.py         # Stage 2: shared MJCF-building helpers (used by both build scripts)
+│   ├── build_stage2_mjcf.py   # Stage 2: builds wam7_bhand.xml from the URDF
 │   ├── wam7_bhand.xml         # Stage 2: compiled MJCF + actuators/site/marker, see writeup
+│   ├── build_stage4_mjcf.py   # Stage 4: builds wam7_bhand_grasp.xml, see writeup
+│   ├── wam7_bhand_grasp.xml   # Stage 4: + hand collision/actuators + table + object
 │   └── meshes/                # 13 STL meshes the URDF references (bhand/ subdir for the hand)
 ├── ik.py                            # Stage 2: damped-least-squares Jacobian IK
 ├── control.py                       # Stage 2: PD + gravity-compensation controller
 ├── trajectory.py                    # Stage 3: moving (circular) target generator
+├── hand_control.py                  # Stage 4: BHand finger open/close control
 ├── eval_stage2_reach_target.py      # Stage 2: 20-trial random-target eval
 ├── eval_stage3_moving_target.py     # Stage 3: 10-trial moving-target tracking eval
+├── eval_stage4_grasp.py             # Stage 4: 20-trial random-table-position grasp eval
 ├── demo_stage1_kinematic_sweep.py   # Stage 1: verification sweep, see media/ GIF above
 ├── demo_stage2_reach_target.py      # Stage 2: 4-target reach demo, see media/ GIF above
 ├── demo_stage3_moving_target.py     # Stage 3: moving-target tracking demo, see media/ GIF
+├── demo_stage4_grasp.py             # Stage 4: pick-up demo, see media/ GIF above
 ├── media/
 │   ├── stage1_kinematic_sweep.gif
 │   ├── stage2_reach_target.gif
-│   └── stage3_moving_target.gif
+│   ├── stage3_moving_target.gif
+│   └── stage4_grasp.gif
 ├── requirements.txt
 └── README.md
 ```

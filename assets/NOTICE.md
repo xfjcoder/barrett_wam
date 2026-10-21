@@ -15,3 +15,8 @@ modifications documented in the top-level README's Stage 1 section:
 `mj.mj_saveLastXML`, then hand-edited to add position+motor actuators on the 7 arm joints, an
 end-effector site, a target-marker mocap body, `armature` on the 3 distal joints, and disabled
 self-collision -- see the top-level README's Stage 2 section for why each was needed.
+
+`wam7_bhand_grasp.xml` (Stage 4) is a sibling artifact built the same way (via
+`assets/build_stage4_mjcf.py`, sharing `assets/mjcf_common.py`'s helpers with Stage 2's build
+script), adding primitive hand collision geometry, 8 BHand finger actuators, a static table, and
+a free-floating sphere to grasp -- see the top-level README's Stage 4 section.

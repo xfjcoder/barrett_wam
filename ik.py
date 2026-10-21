@@ -3,6 +3,17 @@
 Numerical rather than closed-form: the WAM's specific link geometry would need a custom
 derivation, and damped-least-squares is robust to the redundancy (7 arm joints driving a
 3-DOF position target) without one.
+
+Position-only -- an orientation-constrained variant (matching the palm's approach direction
+to straight down, for Stage 4 grasping) was tried and dropped: at the table-height region
+Stage 4 actually reaches into, demanding an exact "straight down" palm convincingly fights the
+arm's natural geometry there (3 joints pinned at their range limits trying to satisfy it,
+residual error frozen, same deadlock signature as the joint-limit issue below but *not*
+fixable by multistart here -- every random restart found the same fight). Turned out
+unnecessary anyway: plain position-only IK, warm-started from home, already lands on a
+consistent, sensibly-downward-tilted orientation in that region on its own (no constraint
+needed) -- good enough for a sphere, which looks the same from any roll angle. See Stage 4's
+README section for the numbers.
 """
 import mujoco as mj
 import numpy as np
