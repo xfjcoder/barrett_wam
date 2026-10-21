@@ -410,13 +410,37 @@ python3 rl/train.py --run-name stage2 --timesteps 1000000 --n-envs 12 --gamma 0.
 python3 rl/eval_policy.py --run-name stage2
 ```
 
-**Net assessment**: real, repeatable, better than a from-scratch collapse -- but a clear loss
-to the scripted baseline (2/20 vs 11/20) at this training budget (a few million CPU-only
-timesteps total across all iterations, no GPU). Closing that gap further would plausibly need
-more training time, a reward shaped more carefully around the specific lift-survival criterion
-rather than raw contact force, or an algorithm better suited to sparse manipulation rewards
-(e.g. hindsight experience replay) -- a bigger investment than fit here. Flagged as a genuine,
-partially-negative result rather than left unreported.
+**More data and training time: 2/20 -> 4/20.** Tested directly rather than assumed: rebuilt
+`rl/states.npz` with 400 training states instead of 100 (`rl/build_states.py --n-states 420`,
+seeds 0-19 still held out for eval) and reran the same two-stage procedure at 3x the
+timesteps per stage (3M + 3M instead of 1M + 1M, `n_envs=14`). Result: **4/20**, real and
+repeatable, double the smaller run's 2/20 -- confirming more data/time does help, in the
+direction the smaller run's numbers already suggested, without having to guess. Still well
+below the scripted baseline's 11/20 at ~6M total timesteps (versus ~2M for the first attempt),
+and stage 2's reward was still edging upward (-2.4 to -3.6) rather than clearly plateaued when
+training stopped, suggesting there's more headroom left in this same approach, not a hard
+ceiling -- but each further doubling of the training budget is a real wall-clock cost (this
+run took roughly 2 hours combined, CPU-only), so where to stop is a budget decision, not a
+technical one. Reproduction:
+
+```
+python3 rl/build_states.py --n-states 420  # overwrites states.npz; seeds 0-19 unchanged
+python3 rl/train.py --run-name stage1 --timesteps 3000000 --n-envs 14 --gamma 0.99 \
+    --contact-force-weight 1.0
+python3 rl/train.py --run-name stage2 --timesteps 3000000 --n-envs 14 --gamma 0.99 --lr 1e-4 \
+    --contact-force-weight 0.02 \
+    --resume rl/runs/stage1/checkpoints/final.zip \
+    --resume-vecnormalize rl/runs/stage1/checkpoints/vecnormalize_final.pkl
+python3 rl/eval_policy.py --run-name stage2
+```
+
+**Net assessment**: real, repeatable, improves with more data/compute as expected -- but a
+clear loss to the scripted baseline (4/20 vs 11/20 at best) within the time invested here.
+Closing the gap further would plausibly take some mix of: more training time (the trend above
+suggests it hasn't plateaued), a reward shaped more carefully around the specific
+lift-survival criterion rather than raw contact force, or an algorithm better suited to sparse
+manipulation rewards (e.g. hindsight experience replay). Flagged as a genuine, partially-
+negative result rather than left unreported.
 
 ## Repository layout
 

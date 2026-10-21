@@ -19,7 +19,7 @@ from stable_baselines3.common.vec_env import SubprocVecEnv, VecMonitor, VecNorma
 from grasp_env import GraspCloseEnv
 
 HERE = Path(__file__).parent
-TRAIN_INDICES = np.arange(20, 120)  # seeds 20-119; seeds 0-19 held out, see build_states.py
+TRAIN_INDICES = np.arange(20, 420)  # seeds 20-419; seeds 0-19 held out, see build_states.py
 
 
 def linear_schedule(initial):
