@@ -233,6 +233,31 @@ starting this project. They share no code.
    (`demo_stage4_grasp.py`), closing the hand's three fingers around it, and lifting it clear
    of the table surface.*
 
+   **Addendum: three attempts to push past 11/20, all negative.** Asked specifically to dig
+   into reliability before moving on, so this was investigated directly rather than left as a
+   one-line caveat:
+   - **Per-finger contact-triggered closing** (freeze a finger's close value the moment it
+     registers contact force against the object, let the others keep closing independently,
+     instead of all 3 fingers advancing on the same fixed schedule) -- the theoretically more
+     robust strategy. Measured *worse* (7/20): once any one finger nudges the object even
+     slightly, the *other* fingers are still running an open-loop angle sweep aimed at the
+     object's *original* position, and simply close past empty space where it used to be.
+     Freezing the first contact doesn't help if the remaining fingers can't re-aim.
+   - **A settle period between descend and closing** (hold the arm at the object's exact
+     position for an extra second, fingers still open, before starting to close) -- motivated
+     by a measured ~1.5-2cm residual tracking gap at the end of descend (mostly vertical,
+     consistent across seeds). Fixed that gap but didn't change the outcome (10/20, same
+     trials failing) -- ruling out "imprecise centering" as the actual cause.
+   - **Widening the finger_1/2 spread** (a wider catching aperture before closing) -- monotonic
+     regression instead of improvement (9/20 at a small spread, 2/20 moderate, 0/20 wide):
+     spreading fingers 1/2 apart moves them away from where the object actually is, trading
+     catch-window size for reach.
+   All three reverted; the code matches the 11/20 numbers above. What's left looks like a
+   genuine approach-direction/geometry sensitivity in which finger reaches the object first --
+   fixing it for real would mean closed-loop per-finger contact-seeking (each finger re-aiming
+   at the object's *current* position as it closes, not an open-loop angle schedule), a
+   meaningfully bigger control problem than this stage's scope. Flagged, not chased further.
+
 ### Addendum: digging into the IK-convergence gap
 
 Stage 2 originally missed 3/20 targets and Stage 3 missed 3/10 circles, and two of Stage 3's
