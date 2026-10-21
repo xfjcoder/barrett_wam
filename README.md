@@ -71,22 +71,85 @@ starting this project. They share no code.
    forearm genuinely folds back alongside the upper arm, not just a qpos number changing with no
    visible effect.
 
-2. **(Next) Reach a target** -- not started. Will need: a fixed-base mount (the URDF's world
-   joint currently floats freely with no attachment, fine for this stage's kinematic-only demo
-   but not for a real controller), actuators (the raw URDF import has none, `model.nu == 0` --
-   MuJoCo doesn't auto-generate them from URDF `<transmission>` tags), and a controller (position/
-   velocity PD or inverse-kinematics-based) to drive the end-effector toward a commanded pose.
+2. **Reach a target -- DONE.** Turns out the "fixed-base mount" item flagged as needed above
+   was already a non-issue: the URDF's root joint (`wam/wam_fixed_joint`) is `type="fixed"`,
+   not floating, so MuJoCo's URDF importer welds `wam/base_link` straight to the world with no
+   free joint at all (confirmed: `nq == nv == 15`, matching exactly the 15 revolute joints,
+   no extra 6/7 DOF from a floating base). The actual new work:
+
+   - **Compiled the URDF to a static MJCF** (`assets/wam7_bhand.xml`, via
+     `mj.mj_saveLastXML`) so actuators, sites, and a target-marker mocap body could be added
+     -- MuJoCo's URDF importer has no mechanism for any of those, and doesn't auto-generate
+     actuators from URDF `<transmission>` tags (`model.nu == 0` on a raw URDF import). The
+     original `assets/wam7_bhand.urdf` stays as Stage 1's artifact; `wam7_bhand.xml` is now
+     the model every script after Stage 1 loads.
+   - **Two actuators per arm joint** (7 arm joints only -- the BHand stays passive until a
+     later grasping stage): a `<position>` servo (`kp`+`kv`, MuJoCo's own implicit PD) for
+     feedback, plus a `<motor>` actuator fed `data.qfrc_bias` each step as pure gravity/
+     Coriolis-compensation feedforward (`control.py`), so the servo's `kp` only has to correct
+     tracking error, not hold the arm up against gravity. A plain position servo alone left
+     several cm of steady-state sag; a hand-rolled explicit `-kd*qvel` damping torque (tried
+     before settling on the implicit `kv`) **diverged** -- the wrist/palm links' own
+     rigid-body inertia is tiny (~1e-4 kg*m^2, since the rigid URDF import has no reflected
+     motor/cable inertia the real cable-driven WAM's distal joints actually have), and that
+     breaks the standard explicit-damping stability bound; measured joint velocity exploding
+     to 15-20 rad/s confirmed it wasn't just "a bit jittery."
+   - **`armature` on the three distal joints** (wrist yaw/pitch, palm yaw: 0.05 each) --
+     the same missing-reflected-inertia gap also let Coriolis coupling from the much heavier,
+     fast-moving shoulder/elbow links fling these joints to the same 15-20 rad/s during a
+     reach, independent of controller tuning. `armature` is MuJoCo's standard fix: it adds a
+     fixed rotor-inertia term to a joint's effective dynamics, separate from the link's own
+     inertia. Fixed it completely (confirmed: qvel on all 7 joints was indistinguishable from
+     0 at convergence afterward, not just qualitatively calmer).
+   - **Self-collision disabled for every arm/hand geom** -- Stage 1's collision meshes are
+     each link's own visual (`_fine.stl`) mesh rather than the original convex-decomposition
+     files, and MuJoCo auto-convexifies those for collision; the inflated hulls of adjacent
+     links turned out to permanently overlap at every joint, which locked the whole arm solid
+     under contact forces the moment any joint was driven (`qfrc_actuator` pinned at its
+     ±60 N*m limit while `qpos` didn't move at all). Harmless for a free-space reaching task;
+     revisit alongside Stage 1's same flagged collision-precision tradeoff if a later grasping
+     stage needs real self-collision.
+   - **Damped-least-squares Jacobian IK** (`ik.py`) for the end-effector site (`wam/ee_site`,
+     placed at the BHand's real grasp-point offset, 0.18m along the palm's z-axis from
+     `wam/wrist_palm_link`) -- numerical rather than closed-form, since closed-form IK for
+     this specific 7-DOF geometry would need its own derivation and damped-least-squares
+     handles the redundancy (4 extra DOF beyond the 3 needed for a position-only target)
+     without one.
+
+   **Evaluated over 20 random targets** (`eval_stage2_reach_target.py`), not a single run:
+   each target is a random *valid joint config* forward-kinematics'd to a Cartesian point
+   (guaranteed reachable, unlike sampling arbitrary Cartesian points that might not be), IK
+   solves it from the arm's current pose, then the controller drives there under gravity for a
+   fixed duration. **17/20 reached within 2cm.** The 3 misses are exactly the 3 trials where
+   IK itself failed to converge within 200 iterations (not a tracking failure) -- every trial
+   where IK converged, closed-loop control reached the target. IK's ~85% convergence rate from
+   a fixed home start is a known limitation of local damped-least-squares with this much
+   redundancy, not investigated further at this stage (a future stage could retry from a
+   randomized seed config on failure, or switch to a global/sampling-based IK).
+
+   <p align="center">
+     <img src="media/stage2_reach_target.gif" width="480" alt="WAM arm reaching four sequential targets (green sphere), the end-effector site (red dot) converging each time">
+   </p>
+
+   *Stage 2's demo: the arm reaching 4 sequential random targets in one continuous episode
+   (`demo_stage2_reach_target.py`), each converging to within 6mm.*
 
 ## Repository layout
 
 ```
 barrett_wam/
 ├── assets/
-│   ├── wam7_bhand.urdf        # vendored + fixed (see Stage 1 writeup above)
+│   ├── wam7_bhand.urdf        # Stage 1: vendored + fixed, see writeup above
+│   ├── wam7_bhand.xml         # Stage 2: compiled MJCF + actuators/site/marker, see writeup
 │   └── meshes/                # 13 STL meshes the URDF references (bhand/ subdir for the hand)
+├── ik.py                            # Stage 2: damped-least-squares Jacobian IK
+├── control.py                       # Stage 2: PD + gravity-compensation controller
+├── eval_stage2_reach_target.py      # Stage 2: 20-trial random-target eval
 ├── demo_stage1_kinematic_sweep.py   # Stage 1: verification sweep, see media/ GIF above
+├── demo_stage2_reach_target.py      # Stage 2: 4-target reach demo, see media/ GIF above
 ├── media/
-│   └── stage1_kinematic_sweep.gif
+│   ├── stage1_kinematic_sweep.gif
+│   └── stage2_reach_target.gif
 ├── requirements.txt
 └── README.md
 ```

@@ -1,0 +1,138 @@
+<mujoco model="wam">
+  <compiler angle="radian" />
+  <asset>
+    <mesh name="base_link_fine" content_type="model/stl" file="meshes/base_link_fine.stl" />
+    <mesh name="shoulder_link_fine" content_type="model/stl" file="meshes/shoulder_link_fine.stl" />
+    <mesh name="shoulder_pitch_link_fine" content_type="model/stl" file="meshes/shoulder_pitch_link_fine.stl" />
+    <mesh name="upper_arm_link_fine" content_type="model/stl" file="meshes/upper_arm_link_fine.stl" />
+    <mesh name="elbow_link_fine" content_type="model/stl" file="meshes/elbow_link_fine.stl" />
+    <mesh name="forearm_link_fine" content_type="model/stl" file="meshes/forearm_link_fine.stl" />
+    <mesh name="wrist_yaw_link_fine" content_type="model/stl" file="meshes/wrist_yaw_link_fine.stl" />
+    <mesh name="wrist_pitch_link_fine" content_type="model/stl" file="meshes/wrist_pitch_link_fine.stl" />
+    <mesh name="wrist_palm_link_fine" content_type="model/stl" file="meshes/wrist_palm_link_fine.stl" />
+    <mesh name="bhand_palm_fine" content_type="model/stl" file="meshes/bhand/bhand_palm_fine.stl" />
+    <mesh name="bhand_finger_prox_link_fine" content_type="model/stl" file="meshes/bhand/bhand_finger_prox_link_fine.stl" />
+    <mesh name="bhand_finger_med_link_fine" content_type="model/stl" file="meshes/bhand/bhand_finger_med_link_fine.stl" />
+    <mesh name="bhand_finger_dist_link_fine" content_type="model/stl" file="meshes/bhand/bhand_finger_dist_link_fine.stl" />
+  </asset>
+  <worldbody>
+    <geom pos="0 0 1" quat="1 0 0 0" type="mesh" contype="0" conaffinity="0" group="1" rgba="0.7 0.7 0.7 0" density="0" mesh="base_link_fine" />
+    <geom pos="0 0 1" quat="1 0 0 0" type="mesh" rgba="0.7 0.7 0.7 0" mesh="base_link_fine" />
+    <body name="wam/shoulder_yaw_link" pos="0 0 1.346">
+      <inertial pos="-0.00443422 -0.00066489 -0.128904" quat="0.69566 0.716712 -0.0354863 0.0334839" mass="5" diaginertia="0.135089 0.113095 0.0904426" />
+      <joint name="wam/base_yaw_joint" range="-2.6 2.6" actuatorfrcrange="-60 60" damping="1.98" />
+      <geom quat="1 0 0 0" type="mesh" contype="0" conaffinity="0" group="1" rgba="0.7 0.7 0.7 1" density="0" mesh="shoulder_link_fine" />
+      <geom quat="1 0 0 0" type="mesh" rgba="0.7 0.7 0.7 1" mesh="shoulder_link_fine" contype="0" conaffinity="0" />
+      <body name="wam/shoulder_pitch_link" quat="0.707107 -0.707107 0 0">
+        <inertial pos="-0.00236981 -0.0154211 0.0310561" quat="0.961794 0.273112 -0.0169316 0.00866593" mass="3.87494" diaginertia="0.0214195 0.0167127 0.0126452" />
+        <joint name="wam/shoulder_pitch_joint" range="-1.985 1.985" actuatorfrcrange="-60 60" damping="0.55" />
+        <geom quat="1 0 0 0" type="mesh" contype="0" conaffinity="0" group="1" rgba="0.7 0.7 0.7 1" density="0" mesh="shoulder_pitch_link_fine" />
+        <geom quat="1 0 0 0" type="mesh" rgba="0.7 0.7 0.7 1" mesh="shoulder_pitch_link_fine" contype="0" conaffinity="0" />
+        <body name="wam/upper_arm_link" quat="0.707107 0.707107 0 0">
+          <inertial pos="0.00683259 3.309e-05 0.392492" quat="0.647136 0.0170822 0.0143038 0.762049" mass="2.20228" diaginertia="0.0592718 0.0592207 0.00313419" />
+          <joint name="wam/shoulder_yaw_joint" range="-2.8 2.8" actuatorfrcrange="-45 45" damping="1.65" />
+          <geom type="mesh" contype="0" conaffinity="0" group="1" rgba="0.7 0.7 0.7 1" density="0" mesh="upper_arm_link_fine" />
+          <geom type="mesh" rgba="0.7 0.7 0.7 1" mesh="upper_arm_link_fine" contype="0" conaffinity="0" />
+          <body name="wam/forearm_link" pos="0.045 0 0.55" quat="0.707107 -0.707107 0 0">
+            <inertial pos="-0.0400149 -0.142717 -0.00022942" quat="0.704281 0.706326 0.0180333 0.0690353" mass="0.500168" diaginertia="0.0151047 0.0148285 0.00275805" />
+            <joint name="wam/elbow_pitch_joint" range="-0.9 3.14159" actuatorfrcrange="-30 30" damping="0.88" />
+            <geom quat="1 0 0 0" type="mesh" contype="0" conaffinity="0" group="1" rgba="0.7 0.7 0.7 1" density="0" mesh="elbow_link_fine" />
+            <geom quat="1 0 0 0" type="mesh" rgba="0.7 0.7 0.7 1" mesh="elbow_link_fine" contype="0" conaffinity="0" />
+            <geom pos="-0.045 -0.073 0" quat="0.707107 0.707107 0 0" type="mesh" contype="0" conaffinity="0" group="1" rgba="0.7 0.7 0.7 1" density="0" mesh="forearm_link_fine" />
+            <geom pos="-0.045 -0.073 0" quat="0.707107 0.707107 0 0" type="mesh" rgba="0.7 0.7 0.7 1" mesh="forearm_link_fine" contype="0" conaffinity="0" />
+            <body name="wam/wrist_yaw_link" pos="-0.045 -0.3 0" quat="0.707107 0.707107 0 0">
+              <inertial pos="8.921e-05 0.00435824 -0.00511217" quat="0.5 0.5 0.5 0.5" mass="1.05376" diaginertia="7.582e-05 6.27e-05 5.029e-05" />
+              <joint name="wam/wrist_yaw_joint" range="-4.55 1.25" actuatorfrcrange="-10 10" damping="0.55" armature="0.05" />
+              <geom quat="1 0 0 0" type="mesh" contype="0" conaffinity="0" group="1" rgba="0.7 0.7 0.7 1" density="0" mesh="wrist_yaw_link_fine" />
+              <geom quat="1 0 0 0" type="mesh" rgba="0.7 0.7 0.7 1" mesh="wrist_yaw_link_fine" contype="0" conaffinity="0" />
+              <body name="wam/wrist_pitch_link" quat="0.707107 -0.707107 0 0">
+                <inertial pos="-0.00012262 -0.0246834 -0.0170319" quat="0.630602 0.776093 0.00401967 -0.00237198" mass="0.517974" diaginertia="0.000555168 0.00046317 0.000234072" />
+                <joint name="wam/wrist_pitch_joint" range="-1.5707 1.5707" actuatorfrcrange="-10 10" damping="0.11" armature="0.05" />
+                <geom type="mesh" contype="0" conaffinity="0" group="1" rgba="0.7 0.7 0.7 1" density="0" mesh="wrist_pitch_link_fine" />
+                <geom type="mesh" rgba="0.7 0.7 0.7 1" mesh="wrist_pitch_link_fine" contype="0" conaffinity="0" />
+                <body name="wam/wrist_palm_link" quat="0.707107 0.707107 0 0">
+                  <inertial pos="-4.39042e-05 0.00433329 0.0908048" quat="0.634239 0.319789 0.355293 0.607654" mass="0.588594" diaginertia="0.000557543 0.000339047 0.000247419" />
+                  <joint name="wam/palm_yaw_joint" range="-3 3" actuatorfrcrange="-10 10" damping="0.11" armature="0.05" />
+                  <geom pos="0 0 0" quat="1 0 0 0" type="mesh" contype="0" conaffinity="0" group="1" rgba="0.7 0.7 0.7 1" density="0" mesh="wrist_palm_link_fine" />
+                  <geom pos="0 0 0" quat="1 0 0 0" type="mesh" rgba="0.7 0.7 0.7 1" mesh="wrist_palm_link_fine" contype="0" conaffinity="0" />
+                  <geom pos="0 0 0.06" quat="1 0 0 0" type="mesh" contype="0" conaffinity="0" group="1" rgba="0.9 0.9 0.9 0" density="0" mesh="bhand_palm_fine" />
+                  <geom pos="0 0 0.06" quat="1 0 0 0" type="mesh" rgba="0.9 0.9 0.9 0" mesh="bhand_palm_fine" contype="0" conaffinity="0" />
+                  <body name="wam/bhand/finger_1/prox_link" pos="-0.025 0 0.1015" quat="0.707107 0 0 -0.707107">
+                    <inertial pos="0.023133 0.00078642 0.00052792" quat="0.0160795 0.707269 -0.000765954 0.706762" mass="0.14109" diaginertia="7.77335e-05 7.66282e-05 4.83122e-06" />
+                    <joint name="wam/bhand/finger_1/prox_joint" range="0 3.14159" actuatorfrcrange="-5 5" damping="0.11" axis="0 0 -1" />
+                    <geom quat="1 0 0 0" type="mesh" contype="0" conaffinity="0" group="1" rgba="0.9 0.9 0.9 0" density="0" mesh="bhand_finger_prox_link_fine" />
+                    <geom quat="1 0 0 0" type="mesh" rgba="0.9 0.9 0.9 0" mesh="bhand_finger_prox_link_fine" contype="0" conaffinity="0" />
+                    <body name="wam/bhand/finger_1/med_link" pos="0.05 0 0.0339" quat="0.707107 0.707107 0 0">
+                      <inertial pos="0.023133 0.00078642 0.00052792" quat="0.0160795 0.707269 -0.000765954 0.706762" mass="0.062139" diaginertia="7.77335e-05 7.66282e-05 4.83122e-06" />
+                      <joint name="wam/bhand/finger_1/med_joint" range="0 2.44346" actuatorfrcrange="-5 5" damping="0.11" />
+                      <geom quat="1 0 0 0" type="mesh" contype="0" conaffinity="0" group="1" rgba="0.9 0.9 0.9 0" density="0" mesh="bhand_finger_med_link_fine" />
+                      <geom quat="1 0 0 0" type="mesh" rgba="0.9 0.9 0.9 0" mesh="bhand_finger_med_link_fine" contype="0" conaffinity="0" />
+                      <body name="wam/bhand/finger_1/dist_link" pos="0.06994 0.003 0" quat="0.92388 0 0 0.382683">
+                        <inertial pos="0.0228257 0.00104907 0.00042029" quat="0.508412 0.51165 0.489583 0.489939" mass="0.041378" diaginertia="3.94348e-05 3.8276e-05 4.09987e-06" />
+                        <joint name="wam/bhand/finger_1/dist_joint" range="0 0.837758" actuatorfrcrange="-5 5" damping="0.11" />
+                        <geom quat="0.92388 0 0 -0.382683" type="mesh" contype="0" conaffinity="0" group="1" rgba="0.9 0.9 0.9 0" density="0" mesh="bhand_finger_dist_link_fine" />
+                        <geom quat="0.92388 0 0 -0.382683" type="mesh" rgba="0.9 0.9 0.9 0" mesh="bhand_finger_dist_link_fine" contype="0" conaffinity="0" />
+                      </body>
+                    </body>
+                  </body>
+                  <body name="wam/bhand/finger_2/prox_link" pos="0.025 0 0.1015" quat="0.707107 0 0 -0.707107">
+                    <inertial pos="0.023133 0.00078642 0.00052792" quat="0.0160795 0.707269 -0.000765954 0.706762" mass="0.14109" diaginertia="7.77335e-05 7.66282e-05 4.83122e-06" />
+                    <joint name="wam/bhand/finger_2/prox_joint" range="0 3.14159" actuatorfrcrange="-5 5" damping="0.11" />
+                    <geom quat="1 0 0 0" type="mesh" contype="0" conaffinity="0" group="1" rgba="0.9 0.9 0.9 0" density="0" mesh="bhand_finger_prox_link_fine" />
+                    <geom quat="1 0 0 0" type="mesh" rgba="0.9 0.9 0.9 0" mesh="bhand_finger_prox_link_fine" contype="0" conaffinity="0" />
+                    <body name="wam/bhand/finger_2/med_link" pos="0.05 0 0.0339" quat="0.707107 0.707107 0 0">
+                      <inertial pos="0.023133 0.00078642 0.00052792" quat="0.0160795 0.707269 -0.000765954 0.706762" mass="0.062139" diaginertia="7.77335e-05 7.66282e-05 4.83122e-06" />
+                      <joint name="wam/bhand/finger_2/med_joint" range="0 2.44346" actuatorfrcrange="-5 5" damping="0.11" />
+                      <geom quat="1 0 0 0" type="mesh" contype="0" conaffinity="0" group="1" rgba="0.9 0.9 0.9 0" density="0" mesh="bhand_finger_med_link_fine" />
+                      <geom quat="1 0 0 0" type="mesh" rgba="0.9 0.9 0.9 0" mesh="bhand_finger_med_link_fine" contype="0" conaffinity="0" />
+                      <body name="wam/bhand/finger_2/dist_link" pos="0.06994 0.003 0" quat="0.92388 0 0 0.382683">
+                        <inertial pos="0.0228257 0.00104907 0.00042029" quat="0.508412 0.51165 0.489583 0.489939" mass="0.041378" diaginertia="3.94348e-05 3.8276e-05 4.09987e-06" />
+                        <joint name="wam/bhand/finger_2/dist_joint" range="0 0.837758" actuatorfrcrange="-5 5" damping="0.11" />
+                        <geom quat="0.92388 0 0 -0.382683" type="mesh" contype="0" conaffinity="0" group="1" rgba="0.9 0.9 0.9 0" density="0" mesh="bhand_finger_dist_link_fine" />
+                        <geom quat="0.92388 0 0 -0.382683" type="mesh" rgba="0.9 0.9 0.9 0" mesh="bhand_finger_dist_link_fine" contype="0" conaffinity="0" />
+                      </body>
+                    </body>
+                  </body>
+                  <body name="wam/bhand/finger_3/med_link" pos="0 0.05 0.1354" quat="0.5 0.5 0.5 0.5">
+                    <inertial pos="0.023133 0.00078642 0.00052792" quat="0.0160795 0.707269 -0.000765954 0.706762" mass="0.062139" diaginertia="7.77335e-05 7.66282e-05 4.83122e-06" />
+                    <joint name="wam/bhand/finger_3/med_joint" range="0 2.44346" actuatorfrcrange="-5 5" damping="0.11" />
+                    <geom quat="1 0 0 0" type="mesh" contype="0" conaffinity="0" group="1" rgba="0.9 0.9 0.9 0" density="0" mesh="bhand_finger_med_link_fine" />
+                    <geom quat="1 0 0 0" type="mesh" rgba="0.9 0.9 0.9 0" mesh="bhand_finger_med_link_fine" contype="0" conaffinity="0" />
+                    <body name="wam/bhand/finger_3/dist_link" pos="0.06994 0.003 0" quat="0.92388 0 0 0.382683">
+                      <inertial pos="0.0228257 0.00104907 0.00042029" quat="0.508412 0.51165 0.489583 0.489939" mass="0.041378" diaginertia="3.94348e-05 3.8276e-05 4.09987e-06" />
+                      <joint name="wam/bhand/finger_3/dist_joint" range="0 0.837758" actuatorfrcrange="-5 5" damping="0.11" />
+                      <geom quat="0.92388 0 0 -0.382683" type="mesh" contype="0" conaffinity="0" group="1" rgba="0.9 0.9 0.9 0" density="0" mesh="bhand_finger_dist_link_fine" />
+                      <geom quat="0.92388 0 0 -0.382683" type="mesh" rgba="0.9 0.9 0.9 0" mesh="bhand_finger_dist_link_fine" contype="0" conaffinity="0" />
+                    </body>
+                  </body>
+                  <site name="wam/ee_site" pos="0 0 0.18" size="0.015" rgba="1 0.2 0.2 1" />
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+    <light pos="1 1 3" dir="-1 -1 -2" diffuse="0.8 0.8 0.8" />
+    <geom name="floor" type="plane" size="2 2 0.1" rgba="0.5 0.5 0.55 1" pos="0 0 0" />
+    <body name="target_marker" mocap="true">
+      <geom type="sphere" size="0.02" rgba="0.1 0.9 0.1 0.6" contype="0" conaffinity="0" />
+    </body>
+  </worldbody>
+  <actuator>
+    <position name="wam/base_yaw_pos_act" joint="wam/base_yaw_joint" kp="80" kv="8" ctrlrange="-2.6 2.6" forcerange="-60 60" />
+    <position name="wam/shoulder_pitch_pos_act" joint="wam/shoulder_pitch_joint" kp="80" kv="8" ctrlrange="-1.985 1.985" forcerange="-60 60" />
+    <position name="wam/shoulder_yaw_pos_act" joint="wam/shoulder_yaw_joint" kp="60" kv="6" ctrlrange="-2.8 2.8" forcerange="-45 45" />
+    <position name="wam/elbow_pitch_pos_act" joint="wam/elbow_pitch_joint" kp="40" kv="4" ctrlrange="-0.9 3.14159" forcerange="-30 30" />
+    <position name="wam/wrist_yaw_pos_act" joint="wam/wrist_yaw_joint" kp="8" kv="1" ctrlrange="-4.55 1.25" forcerange="-10 10" />
+    <position name="wam/wrist_pitch_pos_act" joint="wam/wrist_pitch_joint" kp="8" kv="1" ctrlrange="-1.5707 1.5707" forcerange="-10 10" />
+    <position name="wam/palm_yaw_pos_act" joint="wam/palm_yaw_joint" kp="4" kv="0.5" ctrlrange="-3 3" forcerange="-10 10" />
+    <motor name="wam/base_yaw_ff_act" joint="wam/base_yaw_joint" ctrlrange="-60 60" forcerange="-60 60" />
+    <motor name="wam/shoulder_pitch_ff_act" joint="wam/shoulder_pitch_joint" ctrlrange="-60 60" forcerange="-60 60" />
+    <motor name="wam/shoulder_yaw_ff_act" joint="wam/shoulder_yaw_joint" ctrlrange="-45 45" forcerange="-45 45" />
+    <motor name="wam/elbow_pitch_ff_act" joint="wam/elbow_pitch_joint" ctrlrange="-30 30" forcerange="-30 30" />
+    <motor name="wam/wrist_yaw_ff_act" joint="wam/wrist_yaw_joint" ctrlrange="-10 10" forcerange="-10 10" />
+    <motor name="wam/wrist_pitch_ff_act" joint="wam/wrist_pitch_joint" ctrlrange="-10 10" forcerange="-10 10" />
+    <motor name="wam/palm_yaw_ff_act" joint="wam/palm_yaw_joint" ctrlrange="-10 10" forcerange="-10 10" />
+  </actuator>
+</mujoco>
